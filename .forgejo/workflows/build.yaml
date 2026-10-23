@@ -1,0 +1,47 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: git.rgst.io/jaredallard/asbx
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: https://github.com/actions/checkout@v7
+
+      # Bare owner/repo refs resolve against data.forgejo.org, which
+      # doesn't reliably mirror the docker/* actions.
+      - uses: https://github.com/docker/setup-qemu-action@v4
+      - uses: https://github.com/docker/setup-buildx-action@v4
+
+      - uses: https://github.com/docker/login-action@v4
+        if: github.event_name != 'pull_request'
+        with:
+          registry: git.rgst.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.FORGEJO_PACKAGES_WRITE }}
+
+      - id: meta
+        uses: https://github.com/docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha
+
+      - uses: https://github.com/docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

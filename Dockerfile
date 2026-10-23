@@ -60,7 +60,7 @@ RUN <<EOF
 	set -euo pipefail
 
 	mkdir -p /home/ubuntu/{.claude/projects,.cache/mise,.local/share/mise}
-	chmod -R 1000:1000 /home/ubuntu
+	sudo chown -R 1000:1000 /home/ubuntu
 EOF
 
 COPY --chown=1000:1000 rootfs/mise.toml /home/ubuntu/.config/mise/config.toml
