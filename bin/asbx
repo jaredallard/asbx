@@ -1,0 +1,272 @@
+#!/usr/bin/env bash
+# Wraps claude code inside of a Docker container.
+
+set -euo pipefail
+
+# DOCKER_IMAGE is the image we run claude inside.
+DOCKER_IMAGE="git.rgst.io/jaredallard/asbx:latest"
+
+# config is the asbx configuration, see config.example for the options.
+# Every option is off when it isn't set.
+config="$HOME/.config/asbx/config"
+if [[ -f "$config" ]]; then
+	# shellcheck source=/dev/null
+	source "$config"
+fi
+
+FORGEJO_ENABLED="${FORGEJO_ENABLED:-false}"
+CLAUDE_CODE_OAUTH_TOKEN_SECRET_REF="${CLAUDE_CODE_OAUTH_TOKEN_SECRET_REF:-}"
+LITELLM_TOKEN_SECRET_REF="${LITELLM_TOKEN_SECRET_REF:-}"
+OP_SERVICE_ACCOUNT_TOKEN_SECRET_REF="${OP_SERVICE_ACCOUNT_TOKEN_SECRET_REF:-}"
+CLAUDE_MIRROR_MANAGED_SETTINGS="${CLAUDE_MIRROR_MANAGED_SETTINGS:-false}"
+CLAUDE_MIRROR_PROJECTS="${CLAUDE_MIRROR_PROJECTS:-false}"
+NETWORK_HOST="${NETWORK_HOST:-false}"
+EXTRA_MOUNTS="${EXTRA_MOUNTS:-}"
+EXTRA_SECRET_ENV_VARS="${EXTRA_SECRET_ENV_VARS:-}"
+
+# The agent can write anything under the working directory, so refuse ones
+# that would give it the host's home directory or its config.
+work_dir=$(pwd -P)
+real_home=$(cd "$HOME" && pwd -P)
+if [[ "$work_dir" == / ]] || [[ "$real_home/" == "$work_dir"/* ]] || [[ "$work_dir" == "$real_home"/.* ]]; then
+	echo "Error: refusing to run in $PWD, it would give the agent write access to your home directory or its config" >&2
+	exit 1
+fi
+
+# op_secret prints the 1Password secret at ref, or says how to create it and
+# fails when it's missing or empty.
+#
+# Usage: op_secret <op:// ref> <name> <how to create it>
+op_secret() {
+	local ref="$1"
+	local name="$2"
+	local how="$3"
+
+	local secret
+	if ! secret="$(op read "$ref")" || [[ -z "$secret" ]]; then
+		{
+			echo "Error: $name unable to be determined"
+			echo "$how"
+			echo "and store it in 1Password at '$ref'."
+		} >&2
+		return 1
+	fi
+	echo "$secret"
+}
+
+# docker_args are the docker run arguments for the enabled options.
+docker_args=()
+
+if [[ -n "$LITELLM_TOKEN_SECRET_REF" ]]; then
+	LITELLM_API_KEY=$(op_secret "$LITELLM_TOKEN_SECRET_REF" "LiteLLM API Key" \
+		"Create a virtual key at: https://litellm.koi-insen.ts.net/ui/api-keys/"
+	)
+	export LITELLM_API_KEY
+
+	docker_args+=(--env LITELLM_API_KEY)
+fi
+
+if [[ -n "$CLAUDE_CODE_OAUTH_TOKEN_SECRET_REF" ]]; then
+	CLAUDE_CODE_OAUTH_TOKEN=$(op_secret "$CLAUDE_CODE_OAUTH_TOKEN_SECRET_REF" "Claude OAuth Token" \
+		"Create a new token via: claude setup-token"
+	)
+	export CLAUDE_CODE_OAUTH_TOKEN
+
+	docker_args+=(--env CLAUDE_CODE_OAUTH_TOKEN)
+fi
+
+# The 1Password app's CLI integration can't reach into the container, so op
+# authenticates there with a service account instead.
+if [[ -n "$OP_SERVICE_ACCOUNT_TOKEN_SECRET_REF" ]]; then
+	OP_SERVICE_ACCOUNT_TOKEN=$(op_secret "$OP_SERVICE_ACCOUNT_TOKEN_SECRET_REF" "1Password Service Account Token" \
+		"Create a service account at: https://www.1password.dev/service-accounts/get-started/"
+	)
+	export OP_SERVICE_ACCOUNT_TOKEN
+
+	docker_args+=(--env OP_SERVICE_ACCOUNT_TOKEN)
+fi
+
+# Extra secrets are NAME:op://ref entries. The ref has a colon of its own, so
+# only the first one separates the name.
+IFS=, read -ra extraSecrets <<<"$EXTRA_SECRET_ENV_VARS"
+for secret_env in ${extraSecrets[@]+"${extraSecrets[@]}"}; do
+	[[ -z "$secret_env" ]] && continue
+
+	name="${secret_env%%:*}"
+	ref="${secret_env#*:}"
+	if [[ "$secret_env" != *:* ]] || [[ ! "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || [[ "$ref" != op://* ]]; then
+		echo "Error: EXTRA_SECRET_ENV_VARS entry '$secret_env' must be NAME:op://ref" >&2
+		exit 1
+	fi
+
+	value=$(op_secret "$ref" "$name" "Create it in 1Password")
+	export "$name=$value"
+
+	docker_args+=(--env "$name")
+done
+
+if [[ "$FORGEJO_ENABLED" == "true" ]]; then
+	fj_cfg_path="$HOME/Library/Application Support/fj/config.json"
+	if [[ ! -f "$fj_cfg_path" ]] || ! FORGEJO_TOKEN="$(fj auth token)" || [[ -z "$FORGEJO_TOKEN" ]]; then
+		{
+			echo "Error: Forgejo token unable to be determined"
+			echo "Log in to fj on this machine with 'fj auth login'."
+		} >&2
+		exit 1
+	fi
+
+	export FORGEJO_TOKEN
+	docker_args+=(
+		--env FORGEJO_TOKEN
+		--mount "type=bind,source=$fj_cfg_path,target=/mnt/readonly_host_mnt/fj-config.json,readonly"
+	)
+fi
+
+if [[ "$CLAUDE_MIRROR_MANAGED_SETTINGS" == "true" ]]; then
+	case "$(uname -s)" in
+	Darwin) managed_settings="/Library/Application Support/ClaudeCode/managed-settings.json" ;;
+	Linux) managed_settings="/etc/claude-code/managed-settings.json" ;;
+	*)
+		echo "Error: CLAUDE_MIRROR_MANAGED_SETTINGS isn't supported on $(uname -s)" >&2
+		exit 1
+		;;
+	esac
+
+	if [[ ! -f "$managed_settings" ]]; then
+		echo "Warning: CLAUDE_MIRROR_MANAGED_SETTINGS is enabled but $managed_settings doesn't exist" >&2
+	else
+		docker_args+=(--mount "type=bind,source=$managed_settings,target=/etc/claude-code/managed-settings.json,readonly")
+	fi
+fi
+
+# Extra mounts are mounted at the same path inside the container.
+IFS=, read -ra extraMounts <<<"$EXTRA_MOUNTS"
+for mount in ${extraMounts[@]+"${extraMounts[@]}"}; do
+	[[ -z "$mount" ]] && continue
+
+	if [[ "$mount" != /* ]] || [[ ! -e "$mount" ]]; then
+		echo "Error: EXTRA_MOUNTS entry '$mount' must be an absolute path that exists" >&2
+		exit 1
+	fi
+
+	docker_args+=(--mount "type=bind,source=$mount,target=$mount,readonly")
+done
+
+# The ssh-agent is always at ssh_auth_sock inside the container. Docker for Mac
+# and OrbStack expose the host's agent at that same path in their VM (it
+# doesn't exist on the host itself), while on Linux it's wherever the host's
+# SSH_AUTH_SOCK points.
+ssh_auth_sock=/run/host-services/ssh-auth.sock
+case "$(uname -s)" in
+Darwin) host_ssh_auth_sock="$ssh_auth_sock" ;;
+*)
+	host_ssh_auth_sock="${SSH_AUTH_SOCK:-}"
+	if [[ ! -S "$host_ssh_auth_sock" ]]; then
+		echo "Warning: no ssh-agent found at SSH_AUTH_SOCK, git over SSH and commit signing won't work" >&2
+		host_ssh_auth_sock=""
+	fi
+	;;
+esac
+
+if [[ -n "$host_ssh_auth_sock" ]]; then
+	docker_args+=(
+		--env "SSH_AUTH_SOCK=$ssh_auth_sock"
+		--mount "type=bind,source=$host_ssh_auth_sock,target=$ssh_auth_sock"
+	)
+fi
+
+if [[ "$NETWORK_HOST" == "true" ]]; then
+	docker_args+=(--network host)
+else
+	docker_args+=(--add-host host.docker.internal:host-gateway)
+fi
+
+# Only the parts of the host's Claude configuration the container needs are
+# mounted, so it can't read other projects' sessions, memory or history.
+claude_private=(
+	projects history.jsonl file-history paste-cache session-env sessions
+	shell-snapshots jobs plans backups debug daemon daemon.log feedback ide
+)
+shopt -s dotglob nullglob
+for entry in "$HOME/.claude"/*; do
+	name=${entry##*/}
+	[[ " ${claude_private[*]} " == *" $name "* ]] && continue
+	docker_args+=(--mount "type=bind,source=$entry,target=/mnt/readonly_host_mnt/.claude/$name,readonly")
+done
+shopt -u dotglob nullglob
+
+# Block a few well-known paths that could result in execution on the
+# host.
+host_exec_paths=(.claude/settings.json .claude/settings.local.json .mcp.json)
+if [[ -d .git ]] && [[ ! -L .git ]]; then
+	mkdir -p .git/hooks
+	host_exec_paths+=(.git/config .git/hooks)
+fi
+
+for path in "${host_exec_paths[@]}"; do
+	[[ -e "$path" ]] || continue
+
+	docker_args+=(--mount "type=bind,source=$work_dir/$path,target=$PWD/$path,readonly")
+done
+
+# Tools mise installs persist in volumes per working directory. The checksum
+# keeps directories with the same name from sharing them.
+project_id="$(basename "$PWD")-$(printf %s "$PWD" | cksum | cut -d' ' -f1)"
+
+if [[ "$CLAUDE_MIRROR_PROJECTS" == "true" ]]; then
+	# Claude Code keeps a project's sessions and memory under a directory named
+	# after its working directory, with every non-alphanumeric character replaced
+	# by "-". The working directory is mounted at the same path inside the
+	# container so that both sides can resume each other's sessions.
+	claude_project_dir="$HOME/.claude/projects/${PWD//[^a-zA-Z0-9]/-}"
+	mkdir -p "$claude_project_dir"
+	docker_args+=(--mount "type=bind,source=$claude_project_dir,target=/home/ubuntu/.claude/projects/${claude_project_dir##*/}")
+
+	memory_dir="$claude_project_dir/memory"
+
+	# If the memory path is symlinked, follow it and expose that to the
+	# host as well.
+	if [[ -L "$memory_dir" ]]; then
+		memory_link_path=$(readlink "$memory_dir")
+		if [[ "$memory_link_path" != /* ]]; then
+			echo "Error: $memory_dir must be a symlink to an absolute path" >&2
+			exit 1
+		fi
+
+		# Pin the symlink when we first encounter it so an agent can't try
+		# to rewrite it and have us read it on next run.
+		memoryPin="$HOME/.config/asbx/memory-links/${claude_project_dir##*/}"
+		if [[ ! -f "$memoryPin" ]]; then
+			mkdir -p "${memoryPin%/*}"
+			printf '%s\n' "$memory_link_path" >"$memoryPin"
+			echo "Note: pinned $memory_dir symlink to $memory_link_path in $memoryPin" >&2
+		elif [[ "$(<"$memoryPin")" != "$memory_link_path" ]]; then
+			{
+				echo "Error: $memory_dir now points to $memory_link_path, but was pinned to $(<"$memoryPin")"
+				echo "If you changed it, delete $memoryPin and run asbx again."
+			} >&2
+			exit 1
+		fi
+
+		docker_args+=(--volume "$(realpath "$memory_dir"):$memory_link_path")
+	fi
+fi
+
+exec docker run --rm -it \
+	--env TERM \
+	--env COLORTERM \
+	--mount "type=bind,source=$HOME/.claude.json,target=/mnt/readonly_host_mnt/.claude.json,readonly" \
+	--mount "type=bind,source=$HOME/.gitconfig,target=/mnt/readonly_host_mnt/.gitconfig,readonly" \
+	--volume "asbx-$project_id-mise-shims:/home/ubuntu/.local/share/mise" \
+	--volume "asbx-$project_id-mise-state:/home/ubuntu/.local/state/mise" \
+	--volume "asbx-$project_id-mise-cache:/home/ubuntu/.cache/mise" \
+	${docker_args[@]+"${docker_args[@]}"} \
+	--volume "$PWD:$PWD" \
+	--workdir "$PWD" \
+	--cap-drop ALL \
+	--cap-add CHOWN \
+	--cap-add DAC_OVERRIDE \
+	--cap-add FOWNER \
+	--cap-add SETGID \
+	--cap-add SETUID \
+	"$DOCKER_IMAGE" /opt/asbx/entrypoint.sh "$@"

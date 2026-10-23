@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Prepares the asbx container from the host's read-only mounts and starts
+# claude in the working directory (the repository, at its host path).
+
+set -euo pipefail
+
+host_mnt=/mnt/readonly_host_mnt
+
+# Copy the host's Claude configuration. asbx doesn't mount projects, the
+# current project's sessions and memory are bind mounted read-write over
+# projects/<slug> when mirrored.
+shopt -s dotglob nullglob
+for f in "$host_mnt/.claude"/*; do
+	cp -r "$f" "$HOME/.claude/"
+done
+shopt -u dotglob nullglob
+cp "$host_mnt/.claude.json" "$HOME/"
+
+# Only mounted when Forgejo is enabled. The token comes from FORGEJO_TOKEN.
+if [[ -f "$host_mnt/fj-config.json" ]]; then
+	mkdir -p "$HOME/.config/fj"
+	jq "del(.token)" "$host_mnt/fj-config.json" >"$HOME/.config/fj/config.json"
+fi
+
+if [[ -e ".mise.toml" ]] || [ -e "mise.toml" ]; then
+	install_args=()
+	if [[ -e "mise.lock" ]]; then
+		install_args+=("--locked")
+	fi
+
+	mise install "${install_args[@]}"
+fi
+
+exec mise exec claude -- claude "$@"

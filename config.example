@@ -1,0 +1,43 @@
+# FORGEJO_ENABLED when set to true enables passing through forgejo
+# authentication via `FORGEJO_TOKEN`. It also mirrors in the host
+# configuration found at `~/Library/Application Support/fj/config.json`.
+FORGEJO_ENABLED=true
+
+# CLAUDE_CODE_OAUTH_TOKEN_SECRET_REF is the 1Password `op://` URL ref to
+# retrieve your claude code oauth token secret from. If empty, it is not
+# passed.
+CLAUDE_CODE_OAUTH_TOKEN_SECRET_REF="op://Private/claude-token/credential"
+
+# LITELLM_TOKEN_SECRET_REF when set sets "LITELLM_API_KEY" for usage in
+# managed settings for passing through Anthropic API calls -> LiteLLM.
+LITELLM_TOKEN_SECRET_REF="op://Private/litellm/credential"
+
+# OP_SERVICE_ACCOUNT_TOKEN_SECRET_REF is the 1Password `op://` URL ref
+# to a 1Password service account token. When set, `op` works inside the
+# container as that service account.
+OP_SERVICE_ACCOUNT_TOKEN_SECRET_REF=""
+
+# EXTRA_SECRET_ENV_VARS are , delineated NAME:op://ref entries. Each
+# 1Password secret is passed into the container as the environment
+# variable NAME, where the agent can read it. For example:
+# EXTRA_SECRET_ENV_VARS="GITHUB_TOKEN:op://Private/github/credential"
+EXTRA_SECRET_ENV_VARS=""
+
+# CLAUDE_MIRROR_MANAGED_SETTINGS when set to true enables mirroring your
+# managed-settings.json into the container. You may want to set
+# EXTRA_MOUNTS with this enabled.
+CLAUDE_MIRROR_MANAGED_SETTINGS=true
+
+# CLAUDE_MIRROR_PROJECTS mirrors the host's project sessions+memory if
+# enabled. This is mounted RW.
+CLAUDE_MIRROR_PROJECTS=true
+
+# NETWORK_HOST when set to true runs the container on the host's
+# network, so it can reach every service listening on localhost. When
+# unset, host services are only reachable via `host.docker.internal`.
+NETWORK_HOST=false
+
+# EXTRA_MOUNTS are , delineated paths to forward in (ro) to the
+# container.
+EXTRA_MOUNTS="/opt/rgst-managed"
+

@@ -1,0 +1,5 @@
+[include]
+	path = /mnt/readonly_host_mnt/.gitconfig
+
+[gpg "ssh"]
+	program = ssh-keygen
