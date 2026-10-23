@@ -59,7 +59,7 @@ EOF
 RUN <<EOF
 	set -euo pipefail
 
-	mkdir -p /home/ubuntu/{.claude/projects,.cache/mise,.local/share/mise}
+	mkdir -p /home/ubuntu/{.claude/projects,.cache/mise,.local/share/mise,.local/state/mise}
 	sudo chown -R 1000:1000 /home/ubuntu
 EOF
 
