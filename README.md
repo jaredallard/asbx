@@ -46,12 +46,28 @@ Or add it to your mise config:
 "forgejo:jaredallard/asbx" = { version = "latest", api_url = "https://git.rgst.io/api/v1", asset_pattern = "asbx" }
 ```
 
+Or via [Homebrew](https://brew.sh):
+
+```bash
+brew tap jaredallard/tap https://git.rgst.io/jaredallard/homebrew-tap.git
+brew trust --cask jaredallard/tap/asbx
+brew install --cask jaredallard/tap/asbx
+```
+
 ## Quickstart
 
 Install `asbx` via `mise`:
 
 ```bash
 mise use -g 'forgejo:jaredallard/asbx[api_url=https://git.rgst.io/api/v1,asset_pattern=asbx]'
+```
+
+Or via [Homebrew](https://brew.sh):
+
+```bash
+brew tap jaredallard/tap https://git.rgst.io/jaredallard/homebrew-tap.git
+brew trust --cask jaredallard/tap/asbx
+brew install --cask jaredallard/tap/asbx
 ```
 
 * **Codex**: Create an *API Credential* type 1Password item with your

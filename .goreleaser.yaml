@@ -121,4 +121,22 @@ archives:
     format_overrides:
       - goos: windows
         formats: [zip]
+
+homebrew_casks:
+  - name: asbx
+    description: "sandbox 'yo friends"
+    homepage: https://git.rgst.io/jaredallard/asbx
+    binaries: [asbx]
+    url:
+      template: "https://git.rgst.io/jaredallard/asbx/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    # Don't publish release candidates to the tap.
+    skip_upload: auto
+    caveats: |-
+      asbx requires a running Docker daemon (e.g., OrbStack) and the
+      1Password CLI. See https://git.rgst.io/jaredallard/asbx#requirements
+    commit_msg_template: "chore(asbx): update to {{ .Tag }}"
+    repository:
+      owner: jaredallard
+      name: homebrew-tap
+      branch: main
 ## <</Stencil::Block>>
