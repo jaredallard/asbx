@@ -46,6 +46,17 @@ jobs:
       - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
       - uses: crazy-max/ghaction-github-runtime@v4
+      - name: import gpg key
+        env:
+          GPG_KEY: ${{ secrets.GPG_KEY }}
+          GPG_PASSWORD: ${{ secrets.GPG_PASSWORD }}
+        run: |-
+          mkdir -p ~/.gnupg
+          chmod 700 ~/.gnupg
+          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
+          echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
+          gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSWORD" --import <<<"$GPG_KEY"
+          gpg --list-secret-keys
       ## <</Stencil::Block>>
       - uses: actions/checkout@v7
         with:
