@@ -104,7 +104,7 @@ jobs:
           git tag -a "${{ steps.next_version.outputs.version }}" -m "Release ${{ steps.next_version.outputs.version }}"
       - name: Generate CHANGELOG
         env:
-          GITEA_TOKEN: ${{ github.token }}
+          GITEA_TOKEN: ${{ env.FORGEJO_PACKAGE_TOKEN }}
         run: |-
           mise run changelog-release
       - name: Create release artifacts and Github Release
@@ -114,7 +114,7 @@ jobs:
           unset GITHUB_TOKEN
           goreleaser release --release-notes CHANGELOG.md --clean
         env:
-          GITEA_TOKEN: ${{ secrets.FORGEJO_PACKAGE_TOKEN }}
+          GITEA_TOKEN: ${{ env.FORGEJO_PACKAGE_TOKEN }}
           ## <<Stencil::Block(goreleaseEnvVars)>>
           GPG_PASSWORD: ${{ secrets.GPG_PASSWORD }}
           MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
