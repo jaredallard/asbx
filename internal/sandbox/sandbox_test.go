@@ -21,6 +21,11 @@ type fakeAgent struct {
 	err error
 }
 
+// Name returns "fake".
+func (a *fakeAgent) Name() string {
+	return "fake"
+}
+
 // Configure adds --fake-agent to run, or returns a.err.
 func (a *fakeAgent) Configure(_ context.Context, _ *Host, run *docker.Run) error {
 	if a.err != nil {
@@ -119,6 +124,19 @@ func TestBuildNamesContainer(t *testing.T) {
 	assert.Assert(t, first.Name() != "", "Build() didn't name the container")
 	assert.Assert(t, first.Name() != second.Name(), "Build() named two containers %q", first.Name())
 	assert.Assert(t, slices.Contains(first.Args(), first.Name()), "Build() args = %q, want --name %q", first.Args(), first.Name())
+}
+
+// TestSSHAgentMissing verifies that the user is warned, rather than
+// the run failing, when there's no ssh-agent to forward.
+func TestSSHAgentMissing(t *testing.T) {
+	host := newTestHost(t)
+
+	run := &docker.Run{}
+	sshAgent(host, run, "linux")
+
+	assert.Equal(t, len(run.Args()), 0)
+	assert.Equal(t, len(host.notices), 1)
+	assert.Assert(t, host.notices[0].warn, "sshAgent() notice = %+v, want a warning", host.notices[0])
 }
 
 // TestBuildOPBridge verifies that the container is told where the op

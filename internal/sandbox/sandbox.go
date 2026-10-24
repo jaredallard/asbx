@@ -32,6 +32,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"sync"
 
@@ -73,8 +74,33 @@ var podmanSeccompProfile []byte
 // was last pulled.
 var imageTag = "latest"
 
+// version returns the version of asbx, which is the tag of the image it
+// runs. Builds that aren't releases are "dev", with the commit they were
+// built from when it's known.
+func version() string {
+	if imageTag != "latest" {
+		return imageTag
+	}
+
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "dev"
+	}
+
+	for _, setting := range info.Settings {
+		if setting.Key == "vcs.revision" && len(setting.Value) >= 7 {
+			return "dev (" + setting.Value[:7] + ")"
+		}
+	}
+
+	return "dev"
+}
+
 // Agent is a coding agent that runs inside the sandbox.
 type Agent interface {
+	// Name returns the agent's name, as the user knows it.
+	Name() string
+
 	// Configure adds what the agent needs to run, such as its secrets,
 	// configuration and protected paths, to run.
 	Configure(ctx context.Context, host *Host, run *docker.Run) error
@@ -149,14 +175,14 @@ func extraMounts(run *docker.Run, paths []string) error {
 
 // sshAgent forwards the host's ssh-agent into the container, at
 // sshAuthSock.
-func sshAgent(run *docker.Run, goos string) {
+func sshAgent(host *Host, run *docker.Run, goos string) {
 	hostSock := sshAuthSock
 	if goos != "darwin" {
 		hostSock = os.Getenv("SSH_AUTH_SOCK")
 
 		info, err := os.Stat(hostSock) //nolint:gosec // Why: the user's own ssh-agent socket.
 		if err != nil || info.Mode()&fs.ModeSocket == 0 {
-			fmt.Fprintln(os.Stderr, "Warning: no ssh-agent found at SSH_AUTH_SOCK, git over SSH and commit signing won't work")
+			host.Warn("no ssh-agent found at SSH_AUTH_SOCK, git over SSH and commit signing won't work")
 			return
 		}
 	}
@@ -306,7 +332,7 @@ func configure(ctx context.Context, host *Host, run *docker.Run) error {
 		return err
 	}
 
-	sshAgent(run, runtime.GOOS)
+	sshAgent(host, run, runtime.GOOS)
 
 	if cfg.NetworkHost {
 		run.Arg("--network", "host")
@@ -380,6 +406,8 @@ func Run(ctx context.Context, host *Host, agent Agent, args []string) error {
 	if err != nil {
 		return err
 	}
+
+	announce(host, agent, run, allow)
 
 	image := imageRepository + ":" + imageTag
 	cmd := append([]string{Entrypoint}, args...)

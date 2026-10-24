@@ -63,12 +63,12 @@ const (
 	contextLines = 3
 )
 
-// escape returns text with the characters that a terminal would act on
+// Escape returns text with the characters that a terminal would act on
 // rather than show, such as escape sequences, carriage returns and
 // bidirectional overrides, replaced with Go escapes. Otherwise a file
 // could hide what it contains from the user reviewing it. Newlines and
 // tabs are kept.
-func escape(text string) string {
+func Escape(text string) string {
 	var b strings.Builder
 	for i := 0; i < len(text); {
 		r, size := utf8.DecodeRuneInString(text[i:])
@@ -214,13 +214,13 @@ func lineAt(lines []string, i int, fallback string) string {
 // renderNew returns data, the contents of the file at path, drawn in
 // full, for a file that hasn't been trusted before.
 func renderNew(path string, data []byte, term Terminal) (string, error) {
-	lines, err := highlight(escape(string(data)), term)
+	lines, err := highlight(Escape(string(data)), term)
 	if err != nil {
 		return "", err
 	}
 
 	f := newFrame(term)
-	f.header("File: " + escape(path) + " (new)")
+	f.header("File: " + Escape(path) + " (new)")
 
 	for i, line := range lines {
 		f.line(i+1, " ", line)
@@ -236,7 +236,7 @@ func renderNew(path string, data []byte, term Terminal) (string, error) {
 // shown with the lines around it, and is numbered by the line it's on
 // now, or was on if it was removed.
 func renderChanged(path string, old, data []byte, term Terminal) (string, error) {
-	before, after := escape(string(old)), escape(string(data))
+	before, after := Escape(string(old)), Escape(string(data))
 
 	diff, err := udiff.ToUnifiedDiff("", "", before, udiff.Lines(before, after), contextLines)
 	if err != nil {
@@ -254,7 +254,7 @@ func renderChanged(path string, old, data []byte, term Terminal) (string, error)
 	}
 
 	f := newFrame(term)
-	f.header("File: " + escape(path) + " (changed)")
+	f.header("File: " + Escape(path) + " (changed)")
 
 	// Hunks give only their line in the old file. Lines are added and
 	// removed only within hunks, so the line in the new file is offset

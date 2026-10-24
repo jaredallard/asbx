@@ -38,8 +38,8 @@ var nonAlphanumeric = regexp.MustCompile("[^a-zA-Z0-9]")
 // points the first time it's seen, and errors if it has changed since.
 // Otherwise the agent could repoint it and have the host read it on the
 // next run.
-func pinMemoryLink(configDir, project, link, target string) error {
-	pin := filepath.Join(configDir, "memory-links", project)
+func pinMemoryLink(host *sandbox.Host, project, link, target string) error {
+	pin := filepath.Join(host.ConfigDir, "memory-links", project)
 
 	pinned, err := os.ReadFile(pin) //nolint:gosec // Why: pin is in asbx's own config directory.
 	if errors.Is(err, fs.ErrNotExist) {
@@ -51,7 +51,7 @@ func pinMemoryLink(configDir, project, link, target string) error {
 			return err
 		}
 
-		fmt.Fprintf(os.Stderr, "Note: pinned %s symlink to %s in %s\n", link, target, pin)
+		host.Note("pinned %s symlink to %s in %s", link, target, pin)
 
 		return nil
 	}
@@ -96,7 +96,7 @@ func mirrorProjects(host *sandbox.Host, run *docker.Run) error {
 		return fmt.Errorf("%s must be a symlink to an absolute path", memory)
 	}
 
-	if err := pinMemoryLink(host.ConfigDir, project, memory, target); err != nil {
+	if err := pinMemoryLink(host, project, memory, target); err != nil {
 		return err
 	}
 

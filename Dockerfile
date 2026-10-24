@@ -48,6 +48,25 @@ COPY rootfs/containers.conf /etc/containers/containers.conf
 # Where Podman keeps its runtime state and API socket.
 ENV XDG_RUNTIME_DIR=/run/user/1000
 
+# Install Google Chrome for agents to use for browser based testing.
+RUN <<EOF
+	set -euo pipefail
+
+	file_name="google-chrome-stable_current_$(dpkg --print-architecture).deb"
+	wget "https://dl.google.com/linux/direct/$file_name"
+	apt install -y "./$file_name"
+	rm "$file_name"
+EOF
+
+# Assign the existing ubuntu user to the sudoers
+RUN <<EOF
+	set -euo pipefail
+
+	echo "ubuntu ALL=(ALL) NOPASSWD:ALL" >/etc/sudoers.d/user
+	chmod 0440 /etc/sudoers.d/user
+EOF
+
+
 # The image only ships the C locales; use the UTF-8 one so the terminal
 # renders non-ASCII output.
 ENV LANG=C.UTF-8
@@ -68,26 +87,8 @@ RUN <<EOF
 	install -d -o ubuntu -g ubuntu /run/asbx
 EOF
 
-# Assign the existing ubuntu user to the sudoers
-RUN <<EOF
-	set -euo pipefail
-
-	echo "ubuntu ALL=(ALL) NOPASSWD:ALL" >/etc/sudoers.d/user
-	chmod 0440 /etc/sudoers.d/user
-EOF
-
 USER ubuntu
 WORKDIR /home/ubuntu
-
-# Install Google Chrome for agents to use for browser based testing.
-RUN <<EOF
-	set -euo pipefail
-
-	file_name="google-chrome-stable_current_$(dpkg --print-architecture).deb"
-	wget "https://dl.google.com/linux/direct/$file_name"
-	sudo apt install -y "./$file_name"
-	rm "$file_name"
-EOF
 
 # Ensure perms + dirs are created and exist. We pre-create some dirs so
 # that the bind mount doesn't mess up permissions.

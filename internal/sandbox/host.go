@@ -65,6 +65,32 @@ type Host struct {
 
 	// Config is the user's configuration overridden by the project's.
 	Config *config.Config
+
+	// notices are the messages for the user from setting up the sandbox,
+	// shown when it starts.
+	notices []notice
+}
+
+// notice is a message for the user about how the sandbox was set up.
+type notice struct {
+	// warn is whether it's a warning, which needs the user's attention,
+	// rather than a note.
+	warn bool
+
+	// msg is the message, as a lowercase phrase.
+	msg string
+}
+
+// Warn adds a warning, formatted like [fmt.Sprintf], to show the user
+// when the sandbox starts.
+func (h *Host) Warn(format string, args ...any) {
+	h.notices = append(h.notices, notice{warn: true, msg: fmt.Sprintf(format, args...)})
+}
+
+// Note adds a note, formatted like [fmt.Sprintf], to show the user when
+// the sandbox starts.
+func (h *Host) Note(format string, args ...any) {
+	h.notices = append(h.notices, notice{msg: fmt.Sprintf(format, args...)})
 }
 
 // ProtectPaths mounts each of paths, relative to the working directory,

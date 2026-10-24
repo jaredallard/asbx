@@ -79,6 +79,18 @@ func (r *Run) Secret(name, value string) {
 	r.env = append(r.env, name+"="+value)
 }
 
+// SecretNames returns the names of the secrets added so far, in the
+// order they were added. Their values aren't returned.
+func (r *Run) SecretNames() []string {
+	var names []string
+	for _, kv := range r.env {
+		name, _, _ := strings.Cut(kv, "=")
+		names = append(names, name)
+	}
+
+	return names
+}
+
 // Mount bind mounts source on the host at target in the container.
 func (r *Run) Mount(source, target string, readonly bool) {
 	mount := "type=bind,source=" + source + ",target=" + target

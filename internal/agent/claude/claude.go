@@ -96,6 +96,11 @@ func mountConfig(home string, run *docker.Run) error {
 	return nil
 }
 
+// Name returns "claude".
+func (a *Agent) Name() string {
+	return "claude"
+}
+
 // Configure adds Claude Code's secrets and configuration to run.
 func (a *Agent) Configure(ctx context.Context, host *sandbox.Host, run *docker.Run) error {
 	cfg := host.Config.Claude
@@ -124,7 +129,7 @@ func (a *Agent) Configure(ctx context.Context, host *sandbox.Host, run *docker.R
 		}
 
 		if _, err := os.Stat(path); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: claude.mirror_managed_settings is enabled but %s doesn't exist\n", path)
+			host.Warn("claude.mirror_managed_settings is enabled but %s doesn't exist", path)
 		} else {
 			run.Mount(path, "/etc/claude-code/managed-settings.json", true)
 		}

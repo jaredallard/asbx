@@ -26,6 +26,16 @@ func TestRunEnviron(t *testing.T) {
 	assert.DeepEqual(t, got, []string{"TOKEN=new", "HOME=/home/u", "TOKENS=other"})
 }
 
+// TestRunSecretNames verifies that the names of secrets are returned in
+// the order they were added, without their values.
+func TestRunSecretNames(t *testing.T) {
+	var run Run
+	run.Secret("B_TOKEN", "b=1")
+	run.Secret("A_TOKEN", "a")
+
+	assert.DeepEqual(t, run.SecretNames(), []string{"B_TOKEN", "A_TOKEN"})
+}
+
 // TestRunMount verifies the --mount arguments for read-only and
 // read-write bind mounts.
 func TestRunMount(t *testing.T) {

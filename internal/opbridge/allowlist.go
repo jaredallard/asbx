@@ -59,6 +59,11 @@ func (a *Allowlist) Empty() bool {
 	return len(a.patterns) == 0
 }
 
+// Len returns the number of entries in a.
+func (a *Allowlist) Len() int {
+	return len(a.patterns)
+}
+
 // pattern returns entry as a [doublestar.Match] pattern where only *
 // and ** are special, so that ? in a query string, such as
 // ?attribute=otp, is matched literally.
