@@ -95,7 +95,7 @@ WORKDIR /home/ubuntu
 RUN <<EOF
 	set -euo pipefail
 
-	mkdir -p /home/ubuntu/{.claude/projects,.cache/mise,.local/share/mise,.local/state/mise,.local/share/containers}
+	mkdir -p /home/ubuntu/{.claude/projects,.codex,.cache/mise,.local/share/mise,.local/state/mise,.local/share/containers}
 	sudo chown -R 1000:1000 /home/ubuntu
 	sudo install -d -o ubuntu -g ubuntu -m 0700 "$XDG_RUNTIME_DIR"
 EOF

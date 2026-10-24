@@ -25,36 +25,80 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"git.rgst.io/jaredallard/asbx/internal/agent/claude"
+	"git.rgst.io/jaredallard/asbx/internal/agent/codex"
 	"git.rgst.io/jaredallard/asbx/internal/docker"
 	"git.rgst.io/jaredallard/asbx/internal/sandbox"
 	"github.com/urfave/cli/v3"
 )
 
-// run starts the agent in the sandbox with the arguments asbx was
-// given.
-func run(ctx context.Context, cmd *cli.Command) error {
-	host, err := sandbox.NewHost(ctx)
-	if err != nil {
-		return err
-	}
-
-	return sandbox.Run(ctx, host, claude.New(), cmd.Args().Slice())
-}
-
-func main() {
-	cmd := &cli.Command{
-		Name:  "asbx",
-		Usage: "Run Claude Code inside of a Docker container",
+// agentCommand returns the command that runs agent in the sandbox with
+// the arguments it was given. known are every agent asbx can run.
+func agentCommand(agent sandbox.Agent, known []sandbox.Agent) *cli.Command {
+	return &cli.Command{
+		Name:  agent.Name(),
+		Usage: "Run " + agent.Name(),
 
 		// Every argument, flags included, is the agent's.
 		SkipFlagParsing: true,
 		HideHelp:        true,
+
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			host, err := sandbox.NewHost(ctx)
+			if err != nil {
+				return err
+			}
+
+			return sandbox.Run(ctx, host, agent, known, cmd.Args().Slice())
+		},
+	}
+}
+
+// runDefault returns the action that runs the agent the configuration
+// names, out of known, with the arguments asbx was given.
+func runDefault(known []sandbox.Agent) cli.ActionFunc {
+	return func(ctx context.Context, cmd *cli.Command) error {
+		host, err := sandbox.NewHost(ctx)
+		if err != nil {
+			return err
+		}
+
+		var names []string
+		for _, agent := range known {
+			if agent.Name() == host.Config.Agent {
+				return sandbox.Run(ctx, host, agent, known, cmd.Args().Slice())
+			}
+
+			names = append(names, agent.Name())
+		}
+
+		return fmt.Errorf("agent %q isn't one of %s", host.Config.Agent, strings.Join(names, ", "))
+	}
+}
+
+func main() {
+	known := []sandbox.Agent{claude.New(), codex.New()}
+
+	var commands []*cli.Command
+	for _, agent := range known {
+		commands = append(commands, agentCommand(agent, known))
+	}
+
+	cmd := &cli.Command{
+		Name:  "asbx",
+		Usage: "Run a coding agent, Claude Code or Codex, inside of a Docker container",
+
+		// "asbx <agent> [args]" runs that agent. Otherwise every argument,
+		// flags included, is for the agent the configuration names.
+		Commands:        commands,
+		SkipFlagParsing: true,
+		HideHelp:        true,
 		HideVersion:     true,
 
-		Action: run,
+		Action: runDefault(known),
 
 		ExitErrHandler: func(context.Context, *cli.Command, error) {},
 	}

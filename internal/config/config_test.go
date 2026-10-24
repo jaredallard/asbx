@@ -72,16 +72,17 @@ func TestLoad(t *testing.T) {
 		{
 			name:  "Empty",
 			files: []string{"", "# only a comment\n"},
-			want:  Config{ForgejoEnabled: true, GitHubEnabled: true},
+			want:  Config{Agent: "claude", ForgejoEnabled: true, GitHubEnabled: true},
 		},
 		{
 			name:  "Comments",
 			files: []string{"# a comment\n\nnetwork_host: true # trailing\n"},
-			want:  Config{ForgejoEnabled: true, GitHubEnabled: true, NetworkHost: true},
+			want:  Config{Agent: "claude", ForgejoEnabled: true, GitHubEnabled: true, NetworkHost: true},
 		},
 		{
 			name: "AllOptions",
 			files: []string{`
+agent: codex
 forgejo_enabled: true
 github_enabled: true
 network_host: true
@@ -97,8 +98,11 @@ claude:
   litellm_token_secret_ref: 'op://"h"/i'
   mirror_managed_settings: true
   mirror_projects: true
+codex:
+  api_key_secret_ref: op://j/k
 `},
 			want: Config{
+				Agent:               "codex",
 				ForgejoEnabled:      true,
 				GitHubEnabled:       true,
 				NetworkHost:         true,
@@ -112,6 +116,7 @@ claude:
 					MirrorManagedSettings: true,
 					MirrorProjects:        true,
 				},
+				Codex: Codex{APIKeySecretRef: "op://j/k"},
 			},
 		},
 		{
@@ -120,12 +125,12 @@ claude:
 				"network_host: true\nforgejo_enabled: false\n",
 				"network_host: false\n",
 			},
-			want: Config{GitHubEnabled: true},
+			want: Config{Agent: "claude", GitHubEnabled: true},
 		},
 		{
 			name:  "DefaultsTurnedOff",
 			files: []string{"forgejo_enabled: false\ngithub_enabled: false\n"},
-			want:  Config{},
+			want:  Config{Agent: "claude"},
 		},
 		{
 			name: "LaterNestedOptionOverrides",
@@ -134,10 +139,16 @@ claude:
 				"claude:\n  oauth_token_secret_ref: op://d/e/f\n",
 			},
 			want: Config{
+				Agent:          "claude",
 				ForgejoEnabled: true,
 				GitHubEnabled:  true,
 				Claude:         Claude{MirrorProjects: true, OAuthTokenSecretRef: "op://d/e/f"},
 			},
+		},
+		{
+			name:  "LaterAgentOverrides",
+			files: []string{"agent: claude\n", "agent: codex\n"},
+			want:  Config{Agent: "codex", ForgejoEnabled: true, GitHubEnabled: true},
 		},
 		{
 			name: "LaterListReplaces",
@@ -145,7 +156,7 @@ claude:
 				"extra_mounts: [/a, /b]\n",
 				"extra_mounts: [/c]\n",
 			},
-			want: Config{ForgejoEnabled: true, GitHubEnabled: true, ExtraMounts: []string{"/c"}},
+			want: Config{Agent: "claude", ForgejoEnabled: true, GitHubEnabled: true, ExtraMounts: []string{"/c"}},
 		},
 		{
 			name: "SecretsMergeByName",
@@ -154,6 +165,7 @@ claude:
 				"extra_secret_env_vars:\n  B: ''\n  C: op://c/c/c\n",
 			},
 			want: Config{
+				Agent:              "claude",
 				ForgejoEnabled:     true,
 				GitHubEnabled:      true,
 				ExtraSecretEnvVars: map[string]string{"A": "op://a/a/a", "B": "", "C": "op://c/c/c"},
@@ -165,7 +177,7 @@ claude:
 				"extra_mounts: [/a]\nextra_secret_env_vars: {A: op://a/a/a}\nclaude:\n  oauth_token_secret_ref: op://a/b/c\n",
 				"extra_mounts: null\nextra_secret_env_vars: ~\nclaude:\n  oauth_token_secret_ref: ''\n",
 			},
-			want: Config{ForgejoEnabled: true, GitHubEnabled: true},
+			want: Config{Agent: "claude", ForgejoEnabled: true, GitHubEnabled: true},
 		},
 	}
 
@@ -183,7 +195,7 @@ claude:
 func TestLoadMissingFiles(t *testing.T) {
 	got, err := Load(File{Path: "missing.yaml"})
 	assert.NilError(t, err)
-	assert.DeepEqual(t, *got, Config{ForgejoEnabled: true, GitHubEnabled: true})
+	assert.DeepEqual(t, *got, Config{Agent: "claude", ForgejoEnabled: true, GitHubEnabled: true})
 }
 
 // TestLoadErrors verifies that malformed configuration is rejected
@@ -216,6 +228,11 @@ func TestLoadErrors(t *testing.T) {
 			name:    "UnknownNestedOption",
 			content: "claude:\n  mirror_project: true\n",
 			want:    "line 2: field mirror_project not found",
+		},
+		{
+			name:    "UnknownCodexOption",
+			content: "codex:\n  api_key: op://a/b/c\n",
+			want:    "line 2: field api_key not found",
 		},
 		{
 			name:    "OldFormat",

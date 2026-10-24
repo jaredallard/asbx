@@ -33,6 +33,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"sync"
 
@@ -45,8 +46,8 @@ const (
 	// imageRepository is the repository of the image the sandbox runs.
 	imageRepository = "git.rgst.io/jaredallard/asbx"
 
-	// Entrypoint is the command the sandbox runs, with the agent's
-	// arguments.
+	// Entrypoint is the command the sandbox runs, with the agent's name
+	// and then its arguments.
 	Entrypoint = "/opt/asbx/entrypoint.sh"
 
 	// ReadOnlyHostDir is where host files are mounted read-only for the
@@ -98,8 +99,14 @@ func version() string {
 
 // Agent is a coding agent that runs inside the sandbox.
 type Agent interface {
-	// Name returns the agent's name, as the user knows it.
+	// Name returns the agent's name, as the user knows it. It's also
+	// the command the entrypoint sets up for and runs.
 	Name() string
+
+	// ProtectedPaths returns the paths, relative to the working
+	// directory, that the agent runs code from when it runs on the host,
+	// such as its project settings.
+	ProtectedPaths() []string
 
 	// Configure adds what the agent needs to run, such as its secrets,
 	// configuration and protected paths, to run.
@@ -279,8 +286,9 @@ func podman(run *docker.Run, id string) error {
 }
 
 // protectRepository mounts the files in the working directory that
-// could result in execution on the host read-only.
-func protectRepository(host *Host, run *docker.Run) error {
+// could result in execution on the host read-only, including those of
+// each of agents.
+func protectRepository(host *Host, run *docker.Run, agents []Agent) error {
 	paths := []string{projectConfigFile}
 
 	// A symlinked .git isn't followed, so the agent can't point it
@@ -295,14 +303,22 @@ func protectRepository(host *Host, run *docker.Run) error {
 		paths = append(paths, ".git/config", ".git/hooks")
 	}
 
-	host.ProtectPaths(run, paths...)
+	// Every agent's, not only the running one's, since the host may run
+	// any of them in the working directory afterwards. docker refuses to
+	// mount a path twice.
+	for _, agent := range agents {
+		paths = append(paths, agent.ProtectedPaths()...)
+	}
+
+	slices.Sort(paths)
+	host.protectPaths(run, slices.Compact(paths)...)
 
 	return nil
 }
 
 // configure adds the options from the host's configuration that aren't
-// specific to an agent.
-func configure(ctx context.Context, host *Host, run *docker.Run) error {
+// specific to an agent, and protects the files of each of agents.
+func configure(ctx context.Context, host *Host, run *docker.Run, agents []Agent) error {
 	cfg := host.Config
 
 	secrets, err := extraSecrets(cfg.ExtraSecretEnvVars)
@@ -340,12 +356,13 @@ func configure(ctx context.Context, host *Host, run *docker.Run) error {
 		run.Arg("--add-host", "host.docker.internal:host-gateway")
 	}
 
-	return protectRepository(host, run)
+	return protectRepository(host, run, agents)
 }
 
 // Build returns the docker run arguments that run agent in a sandbox
-// for host.
-func Build(ctx context.Context, host *Host, agent Agent) (*docker.Run, error) {
+// for host. known are every agent asbx can run, whose files are
+// protected whichever runs, and may include agent.
+func Build(ctx context.Context, host *Host, agent Agent, known []Agent) (*docker.Run, error) {
 	run := &docker.Run{}
 	run.Arg("--rm", "-it")
 	run.Env("TERM")
@@ -363,7 +380,8 @@ func Build(ctx context.Context, host *Host, agent Agent) (*docker.Run, error) {
 	// than one run in the same directory.
 	run.SetName("asbx-" + id + "-" + strings.ToLower(rand.Text()[:8]))
 
-	if err := configure(ctx, host, run); err != nil {
+	agents := append([]Agent{agent}, known...)
+	if err := configure(ctx, host, run, agents); err != nil {
 		return nil, err
 	}
 
@@ -399,10 +417,10 @@ func Build(ctx context.Context, host *Host, agent Agent) (*docker.Run, error) {
 }
 
 // Run runs agent in a sandbox for host with args, attached to the
-// terminal, until it exits. A non-zero exit is returned as a
-// [docker.ExitError].
-func Run(ctx context.Context, host *Host, agent Agent, args []string) error {
-	run, err := Build(ctx, host, agent)
+// terminal, until it exits. known are as for [Build]. A non-zero exit is
+// returned as a [docker.ExitError].
+func Run(ctx context.Context, host *Host, agent Agent, known []Agent, args []string) error {
+	run, err := Build(ctx, host, agent, known)
 	if err != nil {
 		return err
 	}
@@ -415,7 +433,7 @@ func Run(ctx context.Context, host *Host, agent Agent, args []string) error {
 	announce(host, agent, run, allow)
 
 	image := imageRepository + ":" + imageTag
-	cmd := append([]string{Entrypoint}, args...)
+	cmd := append([]string{Entrypoint, agent.Name()}, args...)
 	if allow.Empty() {
 		return docker.Exec(ctx, run, image, cmd)
 	}

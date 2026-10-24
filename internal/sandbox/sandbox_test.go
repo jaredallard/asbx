@@ -19,11 +19,19 @@ import (
 // fakeAgent is an Agent that adds a marker argument, or fails with err.
 type fakeAgent struct {
 	err error
+
+	// paths are its protected paths.
+	paths []string
 }
 
 // Name returns "fake".
 func (a *fakeAgent) Name() string {
 	return "fake"
+}
+
+// ProtectedPaths returns a.paths.
+func (a *fakeAgent) ProtectedPaths() []string {
+	return a.paths
 }
 
 // Configure adds --fake-agent to run, or returns a.err.
@@ -70,7 +78,7 @@ func newTestHost(t *testing.T) *Host {
 func TestBuildAgentOrder(t *testing.T) {
 	host := newTestHost(t)
 
-	run, err := Build(t.Context(), host, &fakeAgent{})
+	run, err := Build(t.Context(), host, &fakeAgent{}, nil)
 	assert.NilError(t, err)
 
 	args := run.Args()
@@ -86,7 +94,7 @@ func TestBuildAgentOrder(t *testing.T) {
 func TestBuildAgentError(t *testing.T) {
 	want := errors.New("agent failed")
 
-	_, err := Build(t.Context(), newTestHost(t), &fakeAgent{err: want})
+	_, err := Build(t.Context(), newTestHost(t), &fakeAgent{err: want}, nil)
 	assert.ErrorIs(t, err, want)
 }
 
@@ -100,7 +108,7 @@ func TestBuildProtectsRepository(t *testing.T) {
 	}
 	assert.NilError(t, mkfile(host.WorkDir, ".git/config", false))
 
-	run, err := Build(t.Context(), host, &fakeAgent{})
+	run, err := Build(t.Context(), host, &fakeAgent{}, nil)
 	assert.NilError(t, err)
 
 	args := run.Args()
@@ -110,15 +118,52 @@ func TestBuildProtectsRepository(t *testing.T) {
 	}
 }
 
+// TestBuildProtectsKnownAgents verifies that the files every known
+// agent runs code from on the host are mounted read-only, not only the
+// running agent's, since the host may run any of them afterwards. Paths
+// shared by agents are mounted once, and ones that don't exist aren't.
+func TestBuildProtectsKnownAgents(t *testing.T) {
+	host := newTestHost(t)
+	for _, path := range []string{".fake", ".other"} {
+		assert.NilError(t, mkfile(host.WorkDir, path, true))
+	}
+	for _, path := range []string{".fake/settings", ".other/hooks", ".shared"} {
+		assert.NilError(t, mkfile(host.WorkDir, path, false))
+	}
+
+	running := &fakeAgent{paths: []string{".fake/settings", ".shared"}}
+	other := &fakeAgent{paths: []string{".other/hooks", ".shared", ".missing"}}
+
+	run, err := Build(t.Context(), host, running, []Agent{running, other})
+	assert.NilError(t, err)
+
+	args := run.Args()
+	for _, path := range []string{".fake/settings", ".other/hooks", ".shared"} {
+		mount := "type=bind,source=" + host.WorkDir + "/" + path + ",target=" + host.PWD + "/" + path + ",readonly"
+		count := 0
+		for _, arg := range args {
+			if arg == mount {
+				count++
+			}
+		}
+
+		assert.Equal(t, count, 1, "Build() args = %q, want %q once", args, mount)
+	}
+
+	for _, arg := range args {
+		assert.Assert(t, !strings.Contains(arg, ".missing"), "Build() args = %q, want no mount of .missing", args)
+	}
+}
+
 // TestBuildNamesContainer verifies that each container gets its own
 // name, for the op bridge to find it by.
 func TestBuildNamesContainer(t *testing.T) {
 	host := newTestHost(t)
 
-	first, err := Build(t.Context(), host, &fakeAgent{})
+	first, err := Build(t.Context(), host, &fakeAgent{}, nil)
 	assert.NilError(t, err)
 
-	second, err := Build(t.Context(), host, &fakeAgent{})
+	second, err := Build(t.Context(), host, &fakeAgent{}, nil)
 	assert.NilError(t, err)
 
 	assert.Assert(t, first.Name() != "", "Build() didn't name the container")
@@ -149,12 +194,12 @@ func TestBuildOPBridge(t *testing.T) {
 	host := newTestHost(t)
 	socketEnv := "ASBX_OP_SOCKET=/run/asbx/op.sock"
 
-	run, err := Build(t.Context(), host, &fakeAgent{})
+	run, err := Build(t.Context(), host, &fakeAgent{}, nil)
 	assert.NilError(t, err)
 	assert.Assert(t, !slices.Contains(run.Args(), socketEnv), "Build() args = %q, want no %q", run.Args(), socketEnv)
 
 	host.Config.OPAllowedSecretRefs = []string{"op://a/b/c"}
-	run, err = Build(t.Context(), host, &fakeAgent{})
+	run, err = Build(t.Context(), host, &fakeAgent{}, nil)
 	assert.NilError(t, err)
 	assert.Assert(t, slices.Contains(run.Args(), socketEnv), "Build() args = %q, want %q", run.Args(), socketEnv)
 }
@@ -169,7 +214,7 @@ func TestBuildOPBridgeWithoutOP(t *testing.T) {
 	host := newTestHost(t)
 	host.Config.OPAllowedSecretRefs = []string{"op://a/b/c"}
 
-	_, err := Build(t.Context(), host, &fakeAgent{})
+	_, err := Build(t.Context(), host, &fakeAgent{}, nil)
 	assert.ErrorContains(t, err, "op isn't installed on this host")
 }
 
@@ -179,7 +224,7 @@ func TestBuildOPBridgeInvalidRef(t *testing.T) {
 	host := newTestHost(t)
 	host.Config.OPAllowedSecretRefs = []string{"Private/bank/password"}
 
-	_, err := Build(t.Context(), host, &fakeAgent{})
+	_, err := Build(t.Context(), host, &fakeAgent{}, nil)
 	assert.ErrorContains(t, err, "must be an op:// ref")
 }
 
@@ -283,7 +328,7 @@ func TestGitHubNotLoggedIn(t *testing.T) {
 func TestBuildTrustedDir(t *testing.T) {
 	host := newTestHost(t)
 
-	run, err := Build(t.Context(), host, &fakeAgent{})
+	run, err := Build(t.Context(), host, &fakeAgent{}, nil)
 	assert.NilError(t, err)
 
 	want := "ASBX_TRUSTED_DIR=" + host.PWD
@@ -300,12 +345,12 @@ func TestBuildPodman(t *testing.T) {
 
 	host := newTestHost(t)
 
-	run, err := Build(t.Context(), host, &fakeAgent{})
+	run, err := Build(t.Context(), host, &fakeAgent{}, nil)
 	assert.NilError(t, err)
 	assert.Assert(t, !slices.Contains(run.Args(), "/dev/net/tun"), "Build() args = %q, want no podman args", run.Args())
 
 	host.Config.PodmanEnabled = true
-	run, err = Build(t.Context(), host, &fakeAgent{})
+	run, err = Build(t.Context(), host, &fakeAgent{}, nil)
 	assert.NilError(t, err)
 
 	args := run.Args()

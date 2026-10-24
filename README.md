@@ -1,7 +1,7 @@
 # asbx
 
-A small utility to isolate your (at the moment) claude instances from
-your local machine.
+A small utility to isolate your coding agents, Claude Code and Codex,
+from your local machine with sane defaults and low setup cost.
 
 ## Requirements
 
@@ -9,8 +9,8 @@ your local machine.
   - You can technically use Docker for Mac, but your container will not
     have access to services running your mac (which may or may not be
     acceptable!)
-	- On Linux standard Docker is support (Docker Desktop works w/o host
-	  network access)
+    - On Linux standard Docker is supported (Docker Desktop works w/o host
+      network access)
 - [1Password CLI](https://developer.1password.com/docs/cli/get-started/):
   Used to source tokens passed through to the agent, and by `op` in the
   container.
@@ -45,6 +45,28 @@ Or add it to your mise config:
 [tools]
 "forgejo:jaredallard/asbx" = { version = "latest", api_url = "https://git.rgst.io/api/v1", asset_pattern = "asbx" }
 ```
+
+## Quickstart
+
+Install `asbx` via `mise`:
+
+```bash
+mise use -g 'forgejo:jaredallard/asbx[api_url=https://git.rgst.io/api/v1,asset_pattern=asbx]'
+```
+
+* **Codex**: Create an *API Credential* type 1Password item with your
+  Codex token named `codex-token` in the `credential` field.
+* **Claude**: Create an *API Credential* type 1Password item with your
+  Claude token named `claude-token` in the `credential` field. Need a
+  token? Run `claude setup-token` on your host. Note that it expires
+  after a year as of the time of writing.
+
+Run a sandbox: `asbx` (or, specify the agent with `asbx claude`).
+
+> [!NOTE]
+> Want to store your 1Password item in a different location or add
+> additional secrets? Or, enable other features? Read the configuration
+> section below.
 
 ## Configuration
 
@@ -87,11 +109,12 @@ file each containing its path; delete one to be asked again.
 
 Every option is off when it isn't set, except `forgejo_enabled` and
 `github_enabled`, which are on and skipped when `fj` or `gh` isn't
-logged in. The `claude.` options are nested under a `claude:` map, as in
-the example.
+logged in, and `agent`, which is `claude`. The `claude.` and `codex.`
+options are nested under `claude:` and `codex:` maps, as in the example.
 
 | Option                            | Type   | Description                                                                                                                                                            |
 | --------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agent`                           | string | The agent `asbx` runs when it isn't given one, `claude` or `codex`. See [Agents](#agents).                                                                             |
 | `forgejo_enabled`                 | bool   | Passes `FORGEJO_TOKEN` (from `fj auth token`) and your host's fj config (without its token) into the container. On by default; skipped when not logged in.             |
 | `github_enabled`                  | bool   | Passes `GH_TOKEN` (from `gh auth token`) into the container. On by default; skipped when not logged in.                                                                |
 | `op_allowed_secret_refs`          | list   | `op://` refs that `op` in the container may read through your host's `op`. See [1Password CLI](#1password-cli).                                                        |
@@ -103,6 +126,7 @@ the example.
 | `claude.litellm_token_secret_ref` | string | 1Password `op://` ref to read `LITELLM_API_KEY` from.                                                                                                                  |
 | `claude.mirror_managed_settings`  | bool   | Mounts your OS specific managed settings into the container.                                                                                                           |
 | `claude.mirror_projects`          | bool   | Mounts this directory's Claude sessions and memory read-write, so the host and container can resume each other's sessions.                                             |
+| `codex.api_key_secret_ref`        | string | 1Password `op://` ref to read `OPENAI_API_KEY` from, which Codex is logged in with.                                                                                    |
 
 ### 1Password CLI
 
@@ -147,6 +171,36 @@ Containers inside the container differ from Docker's in a few ways:
   per-project networks fail; use `network_mode: host` or the default
   network instead.
 
+## Agents
+
+`asbx claude [args]` runs Claude Code and `asbx codex [args]` runs
+Codex. Every argument after the agent's name is passed to it. Plain
+`asbx [args]` runs the agent the `agent` option names, `claude` unless
+it's set.
+
+### Claude Code
+
+Your `~/.claude` configuration is copied into the container, except
+other projects' sessions, memory and prompt history. Set
+`claude.oauth_token_secret_ref` to log in with a token from
+`claude setup-token`.
+
+### Codex
+
+Only the configuration in `~/.codex` (or `$CODEX_HOME`) is copied into
+the container: `config.toml`, `AGENTS.md`, `AGENTS.override.md`,
+`prompts`, `rules` and `skills`. Sessions, history and logs aren't, as
+Codex keeps every project's together.
+
+Codex logs in with the OpenAI API key `codex.api_key_secret_ref` reads
+from 1Password.
+
+The container is the sandbox, so Codex's own is turned off in it
+(`sandbox_mode = "danger-full-access"`); it generally can't run inside
+Docker's default seccomp profile anyway. Codex still asks for approval
+as configured, and `--sandbox` overrides it.
+
+
 ## Security
 
 asbx limits agent access, but it's not perfect. There's still a few
@@ -159,7 +213,11 @@ limitations:
 - Asks you to trust a directory the first time it runs in it, before
   the agent can read its files or run code from them.
 - Doesn't mount other projects' sessions, memory or prompt history from
-  `~/.claude`.
+  `~/.claude`, or anything but configuration from `~/.codex`.
+- Mounts the files that every agent asbx knows executes from on the
+  host read-only, whichever agent is running (Claude Code's
+  `.claude/settings.json`, `.claude/settings.local.json` and `.mcp.json`,
+  Codex's `.codex/config.toml` and `.codex/rules`), when they exist.
 - If project memory is symlinked, it will be pinned when first read to
   prevent the agent from mutating it and asbx feed it through on next
   run.
@@ -193,6 +251,8 @@ What it doesn't protect against:
   they can kill the agent's processes and read their command lines,
   but not their environment. They can read each other's. Only run
   images you trust.
+- **Codex's sandbox**: Codex's own sandbox is disabled in the container
+  in favour of asbx's.
 - **`claude.mirror_projects`**: when enabled, sessions and memory
   written in the container are read by Claude on the host, so they can
   carry prompt injection.

@@ -3,6 +3,7 @@ rtk = "1.0.1"
 fd = "10.5.0"
 rg = "15.2.0"
 claude = "2.1.310"
+codex = "0.164.0"
 yq = "4.54.1"
 gh = "2.103.1"
 "forgejo:idlerealm-public/tools" = { version = "1.2.0", api_url = "https://git.rgst.io/api/v1" }

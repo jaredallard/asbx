@@ -1,5 +1,9 @@
 # This file can also be used as a project's .asbx.yaml, at its git root.
 
+# agent is the agent `asbx` runs when it isn't given one, `claude` or
+# `codex`. `asbx claude` and `asbx codex` run that agent regardless.
+agent: claude
+
 # forgejo_enabled when set to true enables passing through forgejo
 # authentication via `FORGEJO_TOKEN`. It also mirrors in the host
 # configuration found at `~/Library/Application Support/fj/config.json`.
@@ -61,3 +65,10 @@ claude:
   # mirror_projects mirrors the host's project sessions+memory if
   # enabled. This is mounted RW.
   mirror_projects: true
+
+codex:
+  # api_key_secret_ref is the 1Password `op://` URL ref to retrieve your
+  # OpenAI API key from. It's passed as `OPENAI_API_KEY`, and Codex is
+  # logged in with it. If empty, Codex isn't logged in and you'll have to
+  # log in on every run.
+  api_key_secret_ref: op://Private/codex-token/credential

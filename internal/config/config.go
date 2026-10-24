@@ -31,8 +31,13 @@ import (
 )
 
 // Config is the asbx configuration. Every option is off when it isn't
-// set, except ForgejoEnabled and GitHubEnabled, which are on.
+// set, except ForgejoEnabled and GitHubEnabled, which are on, and Agent,
+// which is "claude".
 type Config struct {
+	// Agent is the name of the agent asbx runs when it isn't given one,
+	// such as "claude" or "codex".
+	Agent string `yaml:"agent"`
+
 	// ForgejoEnabled passes the host's Forgejo token and fj
 	// configuration into the container, if fj is logged in.
 	ForgejoEnabled bool `yaml:"forgejo_enabled"`
@@ -64,6 +69,9 @@ type Config struct {
 
 	// Claude is the configuration specific to Claude Code.
 	Claude Claude `yaml:"claude"`
+
+	// Codex is the configuration specific to Codex.
+	Codex Codex `yaml:"codex"`
 }
 
 // Claude is the configuration specific to Claude Code.
@@ -82,6 +90,13 @@ type Claude struct {
 	// MirrorProjects mounts the working directory's Claude sessions and
 	// memory read-write.
 	MirrorProjects bool `yaml:"mirror_projects"`
+}
+
+// Codex is the configuration specific to Codex.
+type Codex struct {
+	// APIKeySecretRef is the 1Password ref to read OPENAI_API_KEY from,
+	// which Codex logs in with.
+	APIKeySecretRef string `yaml:"api_key_secret_ref"`
 }
 
 // File is a configuration file's contents and the path they were read
@@ -130,8 +145,9 @@ func decode(file File, cfg *Config) error {
 // string or, for lists and extra_secret_env_vars, null.
 func Load(files ...File) (*Config, error) {
 	// Passing through the host's logins is skipped when it isn't logged
-	// in, so it's safe to have on unless a file turns it off.
-	cfg := Config{ForgejoEnabled: true, GitHubEnabled: true}
+	// in, so it's safe to have on unless a file turns it off. Claude Code
+	// was the only agent before there was a choice.
+	cfg := Config{Agent: "claude", ForgejoEnabled: true, GitHubEnabled: true}
 	for _, file := range files {
 		if err := decode(file, &cfg); err != nil {
 			return nil, err

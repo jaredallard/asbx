@@ -97,10 +97,10 @@ func (h *Host) Note(format string, args ...any) {
 	h.notices = append(h.notices, notice{msg: fmt.Sprintf(format, args...)})
 }
 
-// ProtectPaths mounts each of paths, relative to the working directory,
+// protectPaths mounts each of paths, relative to the working directory,
 // read-only if it exists. It's for files the host reads that could
 // otherwise be used to run code on it, such as git hooks.
-func (h *Host) ProtectPaths(run *docker.Run, paths ...string) {
+func (h *Host) protectPaths(run *docker.Run, paths ...string) {
 	for _, path := range paths {
 		source := filepath.Join(h.WorkDir, path)
 		if _, err := os.Stat(source); err != nil {

@@ -101,6 +101,12 @@ func (a *Agent) Name() string {
 	return "claude"
 }
 
+// ProtectedPaths returns Claude Code's project settings and MCP
+// servers, which it runs commands from.
+func (a *Agent) ProtectedPaths() []string {
+	return []string{".claude/settings.json", ".claude/settings.local.json", ".mcp.json"}
+}
+
 // Configure adds Claude Code's secrets and configuration to run.
 func (a *Agent) Configure(ctx context.Context, host *sandbox.Host, run *docker.Run) error {
 	cfg := host.Config.Claude
@@ -138,9 +144,6 @@ func (a *Agent) Configure(ctx context.Context, host *sandbox.Host, run *docker.R
 	if err := mountConfig(host.Home, run); err != nil {
 		return err
 	}
-
-	// Claude Code runs these on the host from the working directory.
-	host.ProtectPaths(run, ".claude/settings.json", ".claude/settings.local.json", ".mcp.json")
 
 	if cfg.MirrorProjects {
 		return mirrorProjects(host, run)
