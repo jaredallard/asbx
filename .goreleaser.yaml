@@ -1,0 +1,65 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+project_name: asbx
+report_sizes: true
+metadata:
+  mod_timestamp: "{{ .CommitTimestamp }}"
+builds:
+  - main: ./cmd/asbx
+    id: asbx
+    binary: asbx
+    flags:
+      - -trimpath
+    ldflags:
+      - -s
+      - -w
+      ## <<Stencil::Block(asbxLdflags)>>
+
+      ## <</Stencil::Block>>
+    env:
+      - CGO_ENABLED=0
+    goarch:
+      - amd64
+      - arm64
+    goos:
+      - linux
+      - darwin
+      - windows
+    mod_timestamp: "{{ .CommitTimestamp }}"
+dockers_v2:
+  - images:
+      - git.rgst.io/jaredallard/{{ .ProjectName }}
+    labels:
+      "org.opencontainers.image.title": "{{ .ProjectName }}"
+      "org.opencontainers.image.description": "{{ .ProjectName }}"
+      "org.opencontainers.image.source": "{{ .GitURL }}"
+      "org.opencontainers.image.version": "{{ .Version }}"
+      "org.opencontainers.image.created": "{{ .Date }}"
+      "org.opencontainers.image.revision": "{{ .FullCommit }}"
+      "org.opencontainers.image.licenses": "GPL-3.0"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+  ## <<Stencil::Block(extraDockerOpts)>>
+
+  ## <</Stencil::Block>>
+checksum:
+  name_template: "checksums.txt"
+snapshot:
+  version_template: "{{ .Commit }}"
+changelog:
+  use: git
+release:
+  gitea:
+    owner: jaredallard
+    name: asbx
+  prerelease: "auto"
+  footer: |-
+    **Full Changelog**: https://git.rgst.io/jaredallard/asbx/compare/{{ .PreviousTag }}...{{ .Tag }}
+gitea_urls:
+  api: https://git.rgst.io/api/v1
+  download: https://git.rgst.io
+
+## <<Stencil::Block(extraReleaseOpts)>>
+
+## <</Stencil::Block>>

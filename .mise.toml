@@ -1,0 +1,50 @@
+[tools]
+dprint = "0.64.3"
+golangci-lint = "2.15.0"
+goreleaser = "2.19.0"
+gotestsum = "1.13.0"
+shfmt = "latest"
+svu = "3.4.1"
+git-cliff = "2.14.2"
+go = "1.27.3"
+## <<Stencil::Block(extraTools)>>
+
+## <</Stencil::Block>>
+
+[tasks.build]
+description = "Build a binary for the current platform/architecture"
+run = "go build -trimpath -o ./bin/ -v ./cmd/..."
+
+[tasks.changelog]
+description = "Generate a changelog for the current version"
+outputs = ["CHANGELOG.md"]
+run = ["git-cliff --config .cliff.toml --output CHANGELOG.md"]
+
+[tasks.fmt]
+alias = "format"
+description = "Format code"
+run = [
+	"go mod tidy",
+	"golangci-lint fmt",
+	"shfmt -w .",
+	"dprint fmt '**/*.{json,yaml,yml,md,jsonschema.json}'",
+]
+
+[tasks.lint]
+description = "Run linters"
+run = "golangci-lint run"
+
+[tasks.next-version]
+description = """Get the version number that would be released if a release was ran right now.
+Pass --rc to get the next release candidate version.
+"""
+run = ["./.github/scripts/get-next-version.sh"]
+
+[tasks.test]
+description = "Run tests"
+run = "gotestsum"
+
+## <<Stencil::Block(custom)>>
+[settings]
+lockfile = true
+## <</Stencil::Block>>

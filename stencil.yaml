@@ -1,0 +1,11 @@
+name: asbx
+arguments:
+  org: jaredallard
+  license: GPL-3.0
+  commands:
+    - asbx
+  vcs: forgejo
+  vcs_host: git.rgst.io
+  release_targets: [vcs]
+modules:
+  - name: go.rgst.io/rgst-io/stencil-golang

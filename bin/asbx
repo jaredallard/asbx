@@ -119,8 +119,9 @@ op_secret() {
 docker_args=()
 
 if [[ -n "$LITELLM_TOKEN_SECRET_REF" ]]; then
-	LITELLM_API_KEY=$(op_secret "$LITELLM_TOKEN_SECRET_REF" "LiteLLM API Key" \
-		"Create a virtual key at: https://litellm.koi-insen.ts.net/ui/api-keys/"
+	LITELLM_API_KEY=$(
+		op_secret "$LITELLM_TOKEN_SECRET_REF" "LiteLLM API Key" \
+			"Create a virtual key at: https://litellm.koi-insen.ts.net/ui/api-keys/"
 	)
 	export LITELLM_API_KEY
 
@@ -128,8 +129,9 @@ if [[ -n "$LITELLM_TOKEN_SECRET_REF" ]]; then
 fi
 
 if [[ -n "$CLAUDE_CODE_OAUTH_TOKEN_SECRET_REF" ]]; then
-	CLAUDE_CODE_OAUTH_TOKEN=$(op_secret "$CLAUDE_CODE_OAUTH_TOKEN_SECRET_REF" "Claude OAuth Token" \
-		"Create a new token via: claude setup-token"
+	CLAUDE_CODE_OAUTH_TOKEN=$(
+		op_secret "$CLAUDE_CODE_OAUTH_TOKEN_SECRET_REF" "Claude OAuth Token" \
+			"Create a new token via: claude setup-token"
 	)
 	export CLAUDE_CODE_OAUTH_TOKEN
 
@@ -139,8 +141,9 @@ fi
 # The 1Password app's CLI integration can't reach into the container, so op
 # authenticates there with a service account instead.
 if [[ -n "$OP_SERVICE_ACCOUNT_TOKEN_SECRET_REF" ]]; then
-	OP_SERVICE_ACCOUNT_TOKEN=$(op_secret "$OP_SERVICE_ACCOUNT_TOKEN_SECRET_REF" "1Password Service Account Token" \
-		"Create a service account at: https://www.1password.dev/service-accounts/get-started/"
+	OP_SERVICE_ACCOUNT_TOKEN=$(
+		op_secret "$OP_SERVICE_ACCOUNT_TOKEN_SECRET_REF" "1Password Service Account Token" \
+			"Create a service account at: https://www.1password.dev/service-accounts/get-started/"
 	)
 	export OP_SERVICE_ACCOUNT_TOKEN
 
