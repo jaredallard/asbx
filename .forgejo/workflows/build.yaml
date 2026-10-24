@@ -43,10 +43,8 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Layers are cached in the registry, as an OCI image manifest so the
-          # Forgejo registry accepts it.
-          cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
-          cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max,image-manifest=true,oci-mediatypes=true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   # Releases hold bin/asbx pinned to the image built for its tag, which is
   # what mise's forgejo backend installs. It runs after build so a release
