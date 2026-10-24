@@ -85,6 +85,7 @@ func TestLoad(t *testing.T) {
 forgejo_enabled: true
 github_enabled: true
 network_host: true
+podman_enabled: true
 op_allowed_secret_refs:
   - op://x/y/*
   - op://x/z/w
@@ -101,6 +102,7 @@ claude:
 				ForgejoEnabled:      true,
 				GitHubEnabled:       true,
 				NetworkHost:         true,
+				PodmanEnabled:       true,
 				OPAllowedSecretRefs: []string{"op://x/y/*", "op://x/z/w"},
 				ExtraMounts:         []string{"/a", "/b"},
 				ExtraSecretEnvVars:  map[string]string{"GITHUB_TOKEN": "op://a b/c:d/e"},

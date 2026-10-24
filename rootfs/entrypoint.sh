@@ -22,6 +22,12 @@ if [[ -f "$host_mnt/fj-config.json" ]]; then
 	jq "del(.token)" "$host_mnt/fj-config.json" >"$HOME/.config/fj/config.json"
 fi
 
+# Podman's Docker API socket, for tools that use DOCKER_HOST rather than
+# the docker command.
+if [[ ${ASBX_PODMAN:-} == 1 ]]; then
+	podman system service --time=0 >"$XDG_RUNTIME_DIR/podman-service.log" 2>&1 &
+fi
+
 if [[ -e ".mise.toml" ]] || [ -e "mise.toml" ]; then
 	install_args=()
 	if [[ -e "mise.lock" ]]; then

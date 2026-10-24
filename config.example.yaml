@@ -35,6 +35,11 @@ extra_secret_env_vars: {}
 # unset, host services are only reachable via `host.docker.internal`.
 network_host: false
 
+# podman_enabled when set to true lets the agent run containers with
+# rootless Podman inside the container, through `podman` or `docker`.
+# See "Podman" in the README for what this allows.
+podman_enabled: false
+
 # extra_mounts are paths to forward in (ro) to the container.
 extra_mounts: []
 

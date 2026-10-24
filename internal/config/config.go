@@ -49,6 +49,10 @@ type Config struct {
 	// NetworkHost runs the container on the host's network.
 	NetworkHost bool `yaml:"network_host"`
 
+	// PodmanEnabled lets the agent run containers with rootless Podman
+	// inside the container.
+	PodmanEnabled bool `yaml:"podman_enabled"`
+
 	// ExtraMounts are absolute host paths mounted read-only at the same
 	// path inside the container.
 	ExtraMounts []string `yaml:"extra_mounts"`

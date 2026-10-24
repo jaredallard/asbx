@@ -2,10 +2,12 @@ package sandbox
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"git.rgst.io/jaredallard/asbx/internal/config"
@@ -256,4 +258,144 @@ func TestGitHubNotLoggedIn(t *testing.T) {
 	run := &docker.Run{}
 	github(t.Context(), run)
 	assert.Equal(t, len(run.Args()), 0)
+}
+
+// TestBuildPodman verifies that Podman's seccomp profile, device and
+// storage are only added when it's enabled, and that Docker's /proc
+// masks are never turned off for it.
+func TestBuildPodman(t *testing.T) {
+	cacheDir := t.TempDir()
+	t.Setenv("HOME", cacheDir)
+	t.Setenv("XDG_CACHE_HOME", cacheDir)
+
+	host := newTestHost(t)
+
+	run, err := Build(t.Context(), host, &fakeAgent{})
+	assert.NilError(t, err)
+	assert.Assert(t, !slices.Contains(run.Args(), "/dev/net/tun"), "Build() args = %q, want no podman args", run.Args())
+
+	host.Config.PodmanEnabled = true
+	run, err = Build(t.Context(), host, &fakeAgent{})
+	assert.NilError(t, err)
+
+	args := run.Args()
+	for _, want := range []string{"/dev/net/tun", "ASBX_PODMAN=1"} {
+		assert.Assert(t, slices.Contains(args, want), "Build() args = %q, want %q", args, want)
+	}
+
+	for _, arg := range args {
+		unsafe := strings.Contains(arg, "systempaths") || strings.Contains(arg, "SYS_ADMIN")
+		assert.Assert(t, !unsafe, "Build() args = %q, want /proc masked and no CAP_SYS_ADMIN", args)
+
+		profile, ok := strings.CutPrefix(arg, "seccomp=")
+		if !ok {
+			continue
+		}
+
+		data, err := os.ReadFile(profile) //nolint:gosec // Why: the profile Build wrote.
+		assert.NilError(t, err)
+		assert.DeepEqual(t, data, podmanSeccompProfile)
+
+		return
+	}
+
+	t.Fatalf("Build() args = %q, want a seccomp profile", args)
+}
+
+// TestPodmanSeccompProfile verifies that the embedded profile is valid
+// JSON that allows what Podman needs and still blocks the rest.
+func TestPodmanSeccompProfile(t *testing.T) {
+	var profile struct {
+		Syscalls []struct {
+			Names    []string `json:"names"`
+			Action   string   `json:"action"`
+			Includes *struct {
+				Caps []string `json:"caps"`
+			} `json:"includes"`
+		} `json:"syscalls"`
+	}
+	assert.NilError(t, json.Unmarshal(podmanSeccompProfile, &profile))
+
+	// The syscalls allowed without any capability.
+	allowed := make(map[string]bool)
+	for _, rule := range profile.Syscalls {
+		if rule.Action == "SCMP_ACT_ALLOW" && (rule.Includes == nil || len(rule.Includes.Caps) == 0) {
+			for _, name := range rule.Names {
+				allowed[name] = true
+			}
+		}
+	}
+
+	for _, name := range []string{"unshare", "setns", "mount", "pivot_root", "chroot", "clone3"} {
+		assert.Assert(t, allowed[name], "%s isn't allowed", name)
+	}
+
+	for _, name := range []string{"bpf", "perf_event_open", "init_module", "kexec_load", "keyctl"} {
+		assert.Assert(t, !allowed[name], "%s is allowed", name)
+	}
+}
+
+// TestPodmanSeccompProfileNetfilter verifies that the embedded profile
+// blocks NETLINK_NETFILTER sockets and still allows the other netlink
+// protocols and address families moby's profile does.
+func TestPodmanSeccompProfileNetfilter(t *testing.T) {
+	type arg struct {
+		Index uint   `json:"index"`
+		Value uint64 `json:"value"`
+		Op    string `json:"op"`
+	}
+
+	var profile struct {
+		Syscalls []struct {
+			Names    []string `json:"names"`
+			Action   string   `json:"action"`
+			Args     []arg    `json:"args"`
+			Includes *struct {
+				Caps []string `json:"caps"`
+			} `json:"includes"`
+		} `json:"syscalls"`
+	}
+	assert.NilError(t, json.Unmarshal(podmanSeccompProfile, &profile))
+
+	// allows reports whether socket(family, _, protocol) is allowed
+	// without any capability.
+	allows := func(family, protocol uint64) bool {
+		for _, rule := range profile.Syscalls {
+			if !slices.Contains(rule.Names, "socket") || rule.Action != "SCMP_ACT_ALLOW" ||
+				(rule.Includes != nil && len(rule.Includes.Caps) > 0) {
+				continue
+			}
+
+			matches := true
+			for _, a := range rule.Args {
+				v := map[uint]uint64{0: family, 2: protocol}[a.Index]
+				switch a.Op {
+				case "SCMP_CMP_EQ":
+					matches = matches && v == a.Value
+				case "SCMP_CMP_NE":
+					matches = matches && v != a.Value
+				case "SCMP_CMP_LT":
+					matches = matches && v < a.Value
+				default:
+					t.Fatalf("socket rule compares with %s, which this test doesn't handle", a.Op)
+				}
+			}
+
+			if matches {
+				return true
+			}
+		}
+
+		return false
+	}
+
+	const afNetlink, netlinkRoute, netlinkNetfilter = 16, 0, 12
+	assert.Assert(t, !allows(afNetlink, netlinkNetfilter), "NETLINK_NETFILTER sockets are allowed")
+	assert.Assert(t, allows(afNetlink, netlinkRoute), "NETLINK_ROUTE sockets aren't allowed")
+
+	// AF_UNIX, AF_INET, AF_INET6, AF_PACKET and the families either side
+	// of AF_NETLINK.
+	for _, family := range []uint64{1, 2, 10, 15, 17, 37} {
+		assert.Assert(t, allows(family, 0), "address family %d isn't allowed", family)
+	}
 }

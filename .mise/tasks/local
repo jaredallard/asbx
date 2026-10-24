@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+#MISE description="Builds the image and asbx from this checkout, then runs asbx with them in the directory mise was run from"
+set -euo pipefail
+
+# The image's tag, which asbx runs instead of a released one.
+tag=local
+
+# The platform docker runs containers on, which on macOS is its VM's.
+arch=$(docker version --format '{{.Server.Arch}}')
+
+ctx=$(mktemp -d)
+trap 'rm -rf "$ctx"' EXIT
+
+# The Dockerfile expects the build context goreleaser creates: rootfs
+# and asbx-op at $TARGETPLATFORM/asbx-op.
+mkdir -p "$ctx/linux/$arch"
+GOOS=linux GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -o "$ctx/linux/$arch/asbx-op" ./cmd/asbx-op
+cp -r Dockerfile rootfs "$ctx/"
+docker build --platform "linux/$arch" -t "git.rgst.io/jaredallard/asbx:$tag" "$ctx"
+rm -rf "$ctx"
+
+go build -trimpath -o ./bin/asbx \
+	-ldflags "-X git.rgst.io/jaredallard/asbx/internal/sandbox.imageTag=$tag" ./cmd/asbx
+
+# Tasks run from the project root, asbx sandboxes where mise was run.
+asbx=$PWD/bin/asbx
+cd "${MISE_ORIGINAL_CWD:-$PWD}"
+exec "$asbx" "$@"

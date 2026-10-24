@@ -22,6 +22,32 @@ RUN <<EOF
 	apt-get install -y sudo jq curl wget net-tools dnsutils git openssh-client build-essential
 EOF
 
+# Install rootless Podman, for podman_enabled. newuidmap and newgidmap
+# get file capabilities rather than setuid root. As root, writing a user
+# namespace's ID maps needs CAP_SYS_ADMIN, which the container doesn't
+# have.
+RUN <<EOF
+	set -euo pipefail
+
+	apt-get install -y --no-install-recommends podman podman-docker uidmap passt libcap2-bin
+
+	# Silences podman-docker's notice on every docker command.
+	touch /etc/containers/nodocker
+
+	chmod u-s /usr/bin/newuidmap /usr/bin/newgidmap
+	setcap cap_setuid=ep /usr/bin/newuidmap
+	setcap cap_setgid=ep /usr/bin/newgidmap
+
+	# Every ID below 65536 but ubuntu's own, so they fit in rootless
+	# Docker's user namespace.
+	printf 'ubuntu:1:999\nubuntu:1001:64535\n' | tee /etc/subuid >/etc/subgid
+EOF
+
+COPY rootfs/containers.conf /etc/containers/containers.conf
+
+# Where Podman keeps its runtime state and API socket.
+ENV XDG_RUNTIME_DIR=/run/user/1000
+
 # The image only ships the C locales; use the UTF-8 one so the terminal
 # renders non-ASCII output.
 ENV LANG=C.UTF-8
@@ -68,8 +94,9 @@ EOF
 RUN <<EOF
 	set -euo pipefail
 
-	mkdir -p /home/ubuntu/{.claude/projects,.cache/mise,.local/share/mise,.local/state/mise}
+	mkdir -p /home/ubuntu/{.claude/projects,.cache/mise,.local/share/mise,.local/state/mise,.local/share/containers}
 	sudo chown -R 1000:1000 /home/ubuntu
+	sudo install -d -o ubuntu -g ubuntu -m 0700 "$XDG_RUNTIME_DIR"
 EOF
 
 COPY --chown=1000:1000 rootfs/mise.toml /home/ubuntu/.config/mise/config.toml

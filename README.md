@@ -9,6 +9,8 @@ your local machine.
   - You can technically use Docker for Mac, but your container will not
     have access to services running your mac (which may or may not be
     acceptable!)
+	- On Linux standard Docker is support (Docker Desktop works w/o host
+	  network access)
 - [1Password CLI](https://developer.1password.com/docs/cli/get-started/):
   Used to source tokens passed through to the agent, and by `op` in the
   container.
@@ -25,6 +27,9 @@ your local machine.
 - GitHub authentication is passed through via `gh auth token`.
 - `op read` and `op run` work in the container through your host's
   `op`, limited to the secrets you allow if enabled.
+- Containers can be run in the container with rootless Podman, if
+  enabled, without giving it access to your host's Docker or privileged
+  access.
 
 ## Installation
 
@@ -85,6 +90,7 @@ the example.
 | `op_allowed_secret_refs`          | list   | `op://` refs that `op` in the container may read through your host's `op`. See [1Password CLI](#1password-cli).                                                        |
 | `extra_secret_env_vars`           | map    | `NAME: op://ref` entries; each 1Password secret is passed into the container as the environment variable `NAME`.                                                       |
 | `network_host`                    | bool   | Runs the container on the host's network, so it can reach every service listening on localhost. Otherwise host services are only reachable via `host.docker.internal`. |
+| `podman_enabled`                  | bool   | Lets the agent run containers with rootless Podman inside the container. See [Podman](#podman).                                                                        |
 | `extra_mounts`                    | list   | Absolute paths to mount read-only at the same path inside the container.                                                                                               |
 | `claude.oauth_token_secret_ref`   | string | 1Password `op://` ref to read `CLAUDE_CODE_OAUTH_TOKEN` from.                                                                                                          |
 | `claude.litellm_token_secret_ref` | string | 1Password `op://` ref to read `LITELLM_API_KEY` from.                                                                                                                  |
@@ -113,6 +119,26 @@ Query params such as `?attribute=otp` are supported.
 
 > [!WARNING]
 > Only `op read` and `op run` are supported in the container.
+
+### Podman
+
+With `podman_enabled`, the agent can run containers inside the
+container with rootless Podman, using `podman` or `docker`, or the
+Docker API at `DOCKER_HOST` (e.g., for testcontainers). Your host's
+Docker socket isn't mounted, and the container gets no more
+capabilities: Podman nests its containers in user namespaces, which
+needs a seccomp profile that allows the syscalls to create them and
+mount in them. Images are kept in a volume per working directory.
+
+Containers inside the container differ from Docker's in a few ways:
+
+- They share the container's PID namespace, since Docker's `/proc`
+  masks keep a new one from being mounted.
+- Resource limits, such as `--memory`, and `--sysctl` don't work.
+- Only the default network works. Netfilter is blocked (see
+  [Security](#security)), so `podman network create` and Compose's
+  per-project networks fail; use `network_mode: host` or the default
+  network instead.
 
 ## Security
 
@@ -147,6 +173,17 @@ What it doesn't protect against:
   grant more permissions. asbx shows you a new or changed one, including
   one the agent created, and won't use it until you trust it, so read
   it before you do.
+- **`podman_enabled`**: the container runs with a seccomp profile that
+  allows creating user namespaces and mounting in them, which lets the
+  agent reach kernel code, as root in a user namespace, that's been
+  the source of many container escapes. Netfilter, the most common, is
+  blocked. On Linux with rootful Docker and no `userns-remap`, the
+  container isn't in a user namespace itself, so an escape through a
+  kernel bug gives host root. Use rootless Docker or `userns-remap` to
+  limit this. Containers it runs share its PID namespace and user, so
+  they can kill the agent's processes and read their command lines,
+  but not their environment. They can read each other's. Only run
+  images you trust.
 - **`claude.mirror_projects`**: when enabled, sessions and memory
   written in the container are read by Claude on the host, so they can
   carry prompt injection.

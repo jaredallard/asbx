@@ -21,8 +21,10 @@
 package sandbox
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
+	_ "embed"
 	"errors"
 	"fmt"
 	"hash/crc32"
@@ -55,6 +57,15 @@ const (
 	// path in their VM, though it doesn't exist on the host itself.
 	sshAuthSock = "/run/host-services/ssh-auth.sock"
 )
+
+// podmanSeccompProfile is the seccomp profile the container runs with
+// when Podman is enabled: moby's default profile with the syscalls
+// Podman needs to create user namespaces and mount in them allowed. See
+// tools/gen-seccomp-podman, which generates it.
+//
+//go:generate go run ../../tools/gen-seccomp-podman embed/seccomp-podman.json
+//go:embed embed/seccomp-podman.json
+var podmanSeccompProfile []byte
 
 // imageTag is the tag of the image the sandbox runs. Releases set it to
 // their own tag with -ldflags, so asbx runs the image released with it,
@@ -176,6 +187,71 @@ func opBridge(run *docker.Run, entries []string) error {
 	return nil
 }
 
+// writePodmanSeccompProfile writes podmanSeccompProfile into the user's
+// cache directory, for docker to read, and returns its path. The file
+// is named after the profile's checksum, so versions of asbx don't
+// overwrite each other's.
+func writePodmanSeccompProfile() (string, error) {
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		return "", err
+	}
+
+	dir := filepath.Join(cacheDir, "asbx")
+	path := filepath.Join(dir, fmt.Sprintf("seccomp-podman-%08x.json", crc32.ChecksumIEEE(podmanSeccompProfile)))
+	if data, err := os.ReadFile(path); err == nil && bytes.Equal(data, podmanSeccompProfile) { //nolint:gosec // Why: asbx's own cache file.
+		return path, nil
+	}
+
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return "", err
+	}
+
+	// Written beside it then renamed, so a run started at the same time
+	// never reads part of it.
+	f, err := os.CreateTemp(dir, ".seccomp-podman-*")
+	if err != nil {
+		return "", err
+	}
+	defer os.Remove(f.Name()) //nolint:errcheck // Why: it's already gone once renamed.
+
+	if _, err := f.Write(podmanSeccompProfile); err != nil {
+		f.Close() //nolint:errcheck,gosec // Why: the write already failed.
+		return "", err
+	}
+
+	if err := f.Close(); err != nil {
+		return "", err
+	}
+
+	return path, os.Rename(f.Name(), path)
+}
+
+// podman lets the agent run containers with rootless Podman, in user
+// namespaces nested in the container. That needs no more capabilities,
+// only a seccomp profile that allows the syscalls to create and mount in
+// them. Docker's /proc masks stay in place. id names the volume its
+// images and containers are kept in.
+func podman(run *docker.Run, id string) error {
+	profile, err := writePodmanSeccompProfile()
+	if err != nil {
+		return fmt.Errorf("failed to write the seccomp profile for podman: %w", err)
+	}
+
+	run.Arg("--security-opt", "seccomp="+profile)
+
+	// pasta, Podman's rootless networking, creates a tap device.
+	run.Arg("--device", "/dev/net/tun")
+
+	// Podman's storage can't be on the container's own overlayfs.
+	run.Volume("asbx-" + id + "-containers:/home/ubuntu/.local/share/containers")
+
+	run.Env("ASBX_PODMAN=1")
+	run.Env("DOCKER_HOST=unix:///run/user/1000/podman/podman.sock")
+
+	return nil
+}
+
 // protectRepository mounts the files in the working directory that
 // could result in execution on the host read-only.
 func protectRepository(host *Host, run *docker.Run) error {
@@ -263,6 +339,12 @@ func Build(ctx context.Context, host *Host, agent Agent) (*docker.Run, error) {
 
 	if err := configure(ctx, host, run); err != nil {
 		return nil, err
+	}
+
+	if host.Config.PodmanEnabled {
+		if err := podman(run, id); err != nil {
+			return nil, err
+		}
 	}
 
 	if err := agent.Configure(ctx, host, run); err != nil {
