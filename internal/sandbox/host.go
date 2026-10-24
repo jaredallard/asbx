@@ -28,7 +28,9 @@ import (
 
 	"git.rgst.io/jaredallard/asbx/internal/config"
 	"git.rgst.io/jaredallard/asbx/internal/docker"
+	"git.rgst.io/jaredallard/asbx/internal/trust"
 	"go.rgst.io/jaredallard/cmdexec/v2"
+	"golang.org/x/term"
 )
 
 // The configuration files, which are read in this order.
@@ -40,6 +42,10 @@ const (
 	// projectConfigFile is the project's configuration, at its root.
 	projectConfigFile = ".asbx.yaml"
 )
+
+// trustedConfigsDir is where, in the configuration directory, the
+// project configuration files the user trusted are kept.
+const trustedConfigsDir = "trusted-configs"
 
 // Host is where asbx is running: the paths the sandbox is built from
 // and the configuration that applies to them.
@@ -112,6 +118,30 @@ func checkLegacyConfig(legacy, path string) error {
 	return fmt.Errorf("%q uses the old KEY=value format, which is no longer read, convert it to %q (see config.example.yaml)", legacy, path)
 }
 
+// terminal returns the terminal asbx is running in, for asking the user
+// to trust a configuration file. It's only interactive when both stdin
+// and stderr are terminals. Colors follow NO_COLOR and COLORTERM.
+func terminal() trust.Terminal {
+	interactive := term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stderr.Fd()))
+
+	width, _, err := term.GetSize(int(os.Stderr.Fd()))
+	if err != nil {
+		// The frame falls back to a default width.
+		width = 0
+	}
+
+	colorTerm := os.Getenv("COLORTERM")
+
+	return trust.Terminal{
+		In:          os.Stdin,
+		Out:         os.Stderr,
+		Interactive: interactive,
+		Color:       interactive && os.Getenv("NO_COLOR") == "",
+		TrueColor:   colorTerm == "truecolor" || colorTerm == "24bit",
+		Width:       width,
+	}
+}
+
 // NewHost resolves the host asbx is running on and reads its
 // configuration. It refuses working directories where the agent could
 // write to the user's home directory or its config.
@@ -142,7 +172,8 @@ func NewHost(ctx context.Context) (*Host, error) {
 
 	// The project's configuration is read after the user's so it
 	// overrides it. The repository can't run code through it, but it can
-	// turn options on, see Security in the README.
+	// turn options on, so it has to be trusted, see Security in the
+	// README.
 	configDir := filepath.Join(home, ".config", "asbx")
 	root := projectRoot(ctx, workDir)
 	userConfig := filepath.Join(configDir, userConfigFile)
@@ -156,7 +187,27 @@ func NewHost(ctx context.Context) (*Host, error) {
 		return nil, err
 	}
 
-	cfg, err := config.Load(userConfig, projectConfig)
+	userFile, err := config.ReadFile(userConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	projectFile, err := config.ReadFile(projectConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	// The project's configuration can come from anyone with access to
+	// the repository, or the agent if it didn't exist, so the user has to
+	// trust it first. The contents that were trusted are what's loaded.
+	if len(projectFile.Data) > 0 {
+		store := trust.Store{Dir: filepath.Join(configDir, trustedConfigsDir)}
+		if err := store.Verify(projectConfig, projectFile.Data, terminal()); err != nil {
+			return nil, err
+		}
+	}
+
+	cfg, err := config.Load(userFile, projectFile)
 	if err != nil {
 		return nil, err
 	}

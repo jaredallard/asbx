@@ -27,24 +27,38 @@ import (
 	"gotest.tools/v3/assert"
 )
 
-// writeFiles writes each of contents to its own file in a temporary
-// directory and returns their paths, in order.
-func writeFiles(t *testing.T, contents ...string) []string {
-	t.Helper()
-
-	dir := t.TempDir()
-
-	var paths []string
+// configFiles returns each of contents as a configuration file, named in
+// order.
+func configFiles(contents ...string) []File {
+	var files []File
 	for i, content := range contents {
-		path := filepath.Join(dir, string(rune('a'+i))+".yaml")
-		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-			t.Fatalf("WriteFile(%q) = %v", path, err)
-		}
-
-		paths = append(paths, path)
+		path := string(rune('a'+i)) + ".yaml"
+		files = append(files, File{Path: path, Data: []byte(content)})
 	}
 
-	return paths
+	return files
+}
+
+// TestReadFile verifies that a configuration file is read with the path
+// it was read from.
+func TestReadFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	assert.NilError(t, os.WriteFile(path, []byte("network_host: true\n"), 0o600))
+
+	got, err := ReadFile(path)
+	assert.NilError(t, err)
+	assert.DeepEqual(t, got, File{Path: path, Data: []byte("network_host: true\n")})
+}
+
+// TestReadFileMissing verifies that a configuration file that doesn't
+// exist is read as empty rather than treated as an error.
+func TestReadFileMissing(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing.yaml")
+
+	got, err := ReadFile(path)
+	assert.NilError(t, err)
+	assert.Equal(t, got.Path, path)
+	assert.Equal(t, len(got.Data), 0)
 }
 
 // TestLoad verifies that configuration files are decoded and merged,
@@ -155,7 +169,7 @@ claude:
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := Load(writeFiles(t, tt.files...)...)
+			got, err := Load(configFiles(tt.files...)...)
 			assert.NilError(t, err)
 			assert.DeepEqual(t, *got, tt.want)
 		})
@@ -163,9 +177,9 @@ claude:
 }
 
 // TestLoadMissingFiles verifies that configuration files that don't
-// exist are skipped rather than treated as errors, leaving the defaults.
+// exist, read as empty, leave the defaults.
 func TestLoadMissingFiles(t *testing.T) {
-	got, err := Load(filepath.Join(t.TempDir(), "missing.yaml"))
+	got, err := Load(File{Path: "missing.yaml"})
 	assert.NilError(t, err)
 	assert.DeepEqual(t, *got, Config{ForgejoEnabled: true, GitHubEnabled: true})
 }
@@ -220,10 +234,8 @@ func TestLoadErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			paths := writeFiles(t, tt.content)
-
-			_, err := Load(paths...)
-			assert.ErrorContains(t, err, paths[0]+": ")
+			_, err := Load(configFiles(tt.content)...)
+			assert.ErrorContains(t, err, "a.yaml: ")
 			assert.ErrorContains(t, err, tt.want)
 		})
 	}
@@ -232,7 +244,7 @@ func TestLoadErrors(t *testing.T) {
 // TestLoadInvalidValue verifies that a value that doesn't decode as its
 // option's type, such as a non-boolean network_host, is rejected.
 func TestLoadInvalidValue(t *testing.T) {
-	_, err := Load(writeFiles(t, "network_host: maybe\n")...)
+	_, err := Load(configFiles("network_host: maybe\n")...)
 
 	var typeErr *yaml.TypeError
 	assert.Assert(t, errors.As(err, &typeErr), "Load() = %v, want *yaml.TypeError", err)

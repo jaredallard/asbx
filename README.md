@@ -12,6 +12,10 @@ your local machine.
 - [1Password CLI](https://developer.1password.com/docs/cli/get-started/):
   Used to source tokens passed through to the agent, and by `op` in the
   container.
+- [mise](https://mise.jdx.dev): While not **hard** required, it's
+  strongly recommended to help ensure your project's build chain + tools
+  are installed. It's automatically ran (and lockfile verified if it
+  exists) on each enter (note: it is also cached via a volume).
 
 ## Features
 
@@ -55,6 +59,14 @@ and is mounted read-only into the container. Each option it sets
 replaces the user's, except `extra_secret_env_vars`, which is merged by
 name. See [Security](#security) before running asbx in a repo you don't
 trust.
+
+The first time asbx sees a project's `.asbx.yaml`, it shows you the
+whole file and asks you to trust it before using it. If it changes
+after that, asbx shows you what changed since you trusted it and asks
+again. asbx stops if you don't trust it, or if it can't ask because it
+isn't running in a terminal. Trusted files are kept in
+`~/.config/asbx/trusted-configs/`; delete that directory, or a file in
+it, to be asked again.
 
 > [!NOTE]
 > The old `KEY=value` files, `~/.config/asbx/config` and `.asbx`, are
@@ -132,9 +144,9 @@ What it doesn't protect against:
   agent can read every secret `op_allowed_secret_refs` allows, so keep
   it as minimal as possible.
 - **Project config**: a repo's or work dir `.asbx.yaml` configuration can
-  grant more permissions, mitigate this by validating before running.
-  When a configuration file already exists, the agent cannot modify it,
-  but it could create one.
+  grant more permissions. asbx shows you a new or changed one, including
+  one the agent created, and won't use it until you trust it, so read
+  it before you do.
 - **`claude.mirror_projects`**: when enabled, sessions and memory
   written in the container are read by Claude on the host, so they can
   carry prompt injection.

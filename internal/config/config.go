@@ -20,6 +20,7 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -79,43 +80,56 @@ type Claude struct {
 	MirrorProjects bool `yaml:"mirror_projects"`
 }
 
-// readFile decodes the configuration file at path, if it exists, into
-// cfg. Only the options it sets are changed. Unknown options are
-// errors, so a typo can't silently leave an option off.
-func readFile(path string, cfg *Config) error {
-	f, err := os.Open(path) //nolint:gosec // Why: reading the given config file is the point.
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	defer f.Close()
+// File is a configuration file's contents and the path they were read
+// from, which errors are reported against.
+type File struct {
+	// Path is where Data was read from.
+	Path string
 
-	dec := yaml.NewDecoder(f)
+	// Data is the file's contents, empty when it doesn't exist.
+	Data []byte
+}
+
+// ReadFile reads the configuration file at path. A file that doesn't
+// exist is read as empty, so it sets nothing.
+func ReadFile(path string) (File, error) {
+	data, err := os.ReadFile(path) //nolint:gosec // Why: reading the given config file is the point.
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return File{}, err
+	}
+
+	return File{Path: path, Data: data}, nil
+}
+
+// decode decodes file into cfg. Only the options it sets are changed.
+// Unknown options are errors, so a typo can't silently leave an option
+// off.
+func decode(file File, cfg *Config) error {
+	dec := yaml.NewDecoder(bytes.NewReader(file.Data))
 	dec.KnownFields(true)
 
 	// An empty file, or one that's only comments, sets nothing.
 	if err := dec.Decode(cfg); err != nil && !errors.Is(err, io.EOF) {
-		return fmt.Errorf("%s: %w", path, err)
+		return fmt.Errorf("%s: %w", file.Path, err)
 	}
 
 	return nil
 }
 
-// Load reads the configuration files at paths, in order, so that later
-// files override earlier ones. Files that don't exist are skipped.
+// Load decodes the configuration files, in order, so that later files
+// override earlier ones. Empty files, such as ones that don't exist, are
+// skipped.
 //
 // Each option a later file sets replaces the earlier value, including
 // lists, except for extra_secret_env_vars, which is merged by name. A
 // later file turns an option off by setting it to false, an empty
 // string or, for lists and extra_secret_env_vars, null.
-func Load(paths ...string) (*Config, error) {
+func Load(files ...File) (*Config, error) {
 	// Passing through the host's logins is skipped when it isn't logged
 	// in, so it's safe to have on unless a file turns it off.
 	cfg := Config{ForgejoEnabled: true, GitHubEnabled: true}
-	for _, path := range paths {
-		if err := readFile(path, &cfg); err != nil {
+	for _, file := range files {
+		if err := decode(file, &cfg); err != nil {
 			return nil, err
 		}
 	}
