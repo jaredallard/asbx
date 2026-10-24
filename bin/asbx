@@ -175,7 +175,7 @@ if [[ "$FORGEJO_ENABLED" == "true" ]]; then
 		exit 1
 		;;
 	esac
-	fj_cfg_path="$HOME/Library/Application Support/fj/config.json"
+
 	if [[ ! -f "$fj_cfg_path" ]] || ! FORGEJO_TOKEN="$(fj auth token)" || [[ -z "$FORGEJO_TOKEN" ]]; then
 		{
 			echo "Error: Forgejo token unable to be determined"
