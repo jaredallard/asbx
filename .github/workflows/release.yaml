@@ -33,7 +33,7 @@ env:
   # https://codeberg.org/forgejo/forgejo/issues/6198
   #
   ## <<Stencil::Block(forgejoPackageToken)>>
-  FORGEJO_PACKAGE_TOKEN: ${{ github.token }}
+  FORGEJO_PACKAGE_TOKEN: ${{ secrets.FORGEJO_PACKAGES_WRITE }}
   ## <</Stencil::Block>>
 
 jobs:
@@ -114,7 +114,7 @@ jobs:
           unset GITHUB_TOKEN
           goreleaser release --release-notes CHANGELOG.md --clean
         env:
-          GITEA_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITEA_TOKEN: ${{ secrets.FORGEJO_PACKAGE_TOKEN }}
           ## <<Stencil::Block(goreleaseEnvVars)>>
           GPG_PASSWORD: ${{ secrets.GPG_PASSWORD }}
           MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
