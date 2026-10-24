@@ -8,7 +8,10 @@ svu = "3.4.1"
 git-cliff = "2.14.2"
 go = "1.27.3"
 ## <<Stencil::Block(extraTools)>>
-
+# Records the README's demo, see the demo task.
+vhs = "0.12.1"
+# No macOS builds, use brew install ttyd there.
+ttyd = { version = "1.7.7", os = ["linux", "windows"] }
 ## <</Stencil::Block>>
 
 [tasks.build]
@@ -45,6 +48,12 @@ description = "Run tests"
 run = "gotestsum"
 
 ## <<Stencil::Block(custom)>>
+[tasks.demo]
+description = "Record the README's demo GIF with vhs (needs ffmpeg, Docker and 1Password unlocked; ttyd on macOS)"
+sources = ["docs/demo.tape"]
+outputs = ["docs/demo.gif"]
+run = "vhs docs/demo.tape"
+
 [settings]
 lockfile = true
 ## <</Stencil::Block>>

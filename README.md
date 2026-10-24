@@ -3,6 +3,8 @@
 A small utility to isolate your coding agents, Claude Code and Codex,
 from your local machine with sane defaults and low setup cost.
 
+![asbx starting Claude Code in a sandbox](docs/demo.gif)
+
 ## Requirements
 
 - [Orbstack](https://orbstack.dev)
