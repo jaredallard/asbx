@@ -39,8 +39,8 @@ import (
 )
 
 const (
-	// Image is the image the sandbox runs.
-	Image = "git.rgst.io/jaredallard/asbx:latest"
+	// imageRepository is the repository of the image the sandbox runs.
+	imageRepository = "git.rgst.io/jaredallard/asbx"
 
 	// Entrypoint is the command the sandbox runs, with the agent's
 	// arguments.
@@ -56,6 +56,12 @@ const (
 	sshAuthSock = "/run/host-services/ssh-auth.sock"
 )
 
+// imageTag is the tag of the image the sandbox runs. Releases set it to
+// their own tag with -ldflags, so asbx runs the image released with it,
+// whose entrypoint and asbx-op match it, rather than whatever :latest
+// was last pulled.
+var imageTag = "latest"
+
 // Agent is a coding agent that runs inside the sandbox.
 type Agent interface {
 	// Configure adds what the agent needs to run, such as its secrets,
@@ -63,35 +69,53 @@ type Agent interface {
 	Configure(ctx context.Context, host *Host, run *docker.Run) error
 }
 
+// authToken returns the token that cli's "auth token" command prints,
+// or false when cli isn't installed or logged in. cli's own errors
+// aren't shown, since not being logged in isn't one for asbx.
+func authToken(ctx context.Context, cli string) (string, bool) {
+	out, err := cmdexec.CommandContext(ctx, cli, "auth", "token").Output()
+	token := strings.TrimRight(string(out), "\n")
+	if err != nil || token == "" {
+		return "", false
+	}
+
+	return token, true
+}
+
 // forgejo passes the host's Forgejo token and fj configuration into the
-// container. The entrypoint removes the token from the configuration,
-// it comes from FORGEJO_TOKEN instead.
+// container, if fj is logged in. The entrypoint removes the token from
+// the configuration, it comes from FORGEJO_TOKEN instead.
 func forgejo(ctx context.Context, run *docker.Run) error {
 	configDir, err := os.UserConfigDir()
 	if err != nil {
 		return err
 	}
 
-	notLoggedIn := errors.New("unable to determine Forgejo token, log in to fj on this machine with 'fj auth login'")
-
 	path := filepath.Join(configDir, "fj", "config.json")
 	if _, err := os.Stat(path); err != nil {
-		return notLoggedIn
+		return nil
 	}
 
-	cmd := cmdexec.CommandContext(ctx, "fj", "auth", "token")
-	cmd.SetStderr(os.Stderr)
-
-	out, err := cmd.Output()
-	token := strings.TrimRight(string(out), "\n")
-	if err != nil || token == "" {
-		return notLoggedIn
+	token, ok := authToken(ctx, "fj")
+	if !ok {
+		return nil
 	}
 
 	run.Secret("FORGEJO_TOKEN", token)
 	run.Mount(path, ReadOnlyHostDir+"/fj-config.json", true)
 
 	return nil
+}
+
+// github passes the host's GitHub token into the container as GH_TOKEN,
+// which gh prefers over its own configuration, if gh is logged in.
+func github(ctx context.Context, run *docker.Run) {
+	token, ok := authToken(ctx, "gh")
+	if !ok {
+		return
+	}
+
+	run.Secret("GH_TOKEN", token)
 }
 
 // extraMounts mounts each of paths read-only at the same path inside
@@ -198,6 +222,10 @@ func configure(ctx context.Context, host *Host, run *docker.Run) error {
 		}
 	}
 
+	if cfg.GitHubEnabled {
+		github(ctx, run)
+	}
+
 	if err := extraMounts(run, cfg.ExtraMounts); err != nil {
 		return err
 	}
@@ -271,9 +299,10 @@ func Run(ctx context.Context, host *Host, agent Agent, args []string) error {
 		return err
 	}
 
+	image := imageRepository + ":" + imageTag
 	cmd := append([]string{Entrypoint}, args...)
 	if allow.Empty() {
-		return docker.Exec(ctx, run, Image, cmd)
+		return docker.Exec(ctx, run, image, cmd)
 	}
 
 	// The bridge runs for as long as the container does.
@@ -284,7 +313,7 @@ func Run(ctx context.Context, host *Host, agent Agent, args []string) error {
 		opbridge.Run(bridgeCtx, run.Name(), allow)
 	})
 
-	err = docker.Exec(ctx, run, Image, cmd)
+	err = docker.Exec(ctx, run, image, cmd)
 	stopBridge()
 	wg.Wait()
 

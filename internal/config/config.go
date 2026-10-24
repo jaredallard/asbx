@@ -30,11 +30,15 @@ import (
 )
 
 // Config is the asbx configuration. Every option is off when it isn't
-// set.
+// set, except ForgejoEnabled and GitHubEnabled, which are on.
 type Config struct {
 	// ForgejoEnabled passes the host's Forgejo token and fj
-	// configuration into the container.
+	// configuration into the container, if fj is logged in.
 	ForgejoEnabled bool `yaml:"forgejo_enabled"`
+
+	// GitHubEnabled passes the host's GitHub token, from gh, into the
+	// container as GH_TOKEN, if gh is logged in.
+	GitHubEnabled bool `yaml:"github_enabled"`
 
 	// OPAllowedSecretRefs are the op:// refs, where * matches within a
 	// path segment and /**/ across them, that op inside the container
@@ -107,7 +111,9 @@ func readFile(path string, cfg *Config) error {
 // later file turns an option off by setting it to false, an empty
 // string or, for lists and extra_secret_env_vars, null.
 func Load(paths ...string) (*Config, error) {
-	var cfg Config
+	// Passing through the host's logins is skipped when it isn't logged
+	// in, so it's safe to have on unless a file turns it off.
+	cfg := Config{ForgejoEnabled: true, GitHubEnabled: true}
 	for _, path := range paths {
 		if err := readFile(path, &cfg); err != nil {
 			return nil, err

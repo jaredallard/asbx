@@ -17,8 +17,8 @@ your local machine.
 
 - Agent has access to your current `pwd`, and only that directory.
 - Git commit signing works via ssh-agent (e.g., 1Password).
-- Forgejo authentication is passed through via `fj auth token` if
-  enabled.
+- Forgejo authentication is passed through via `fj auth token`.
+- GitHub authentication is passed through via `gh auth token`.
 - `op read` and `op run` work in the container through your host's
   `op`, limited to the secrets you allow if enabled.
 
@@ -61,12 +61,15 @@ trust.
 > no longer read. asbx refuses to run while one exists, convert it to
 > YAML using [config.example.yaml](config.example.yaml).
 
-Every option is off when it isn't set. The `claude.` options are
-nested under a `claude:` map, as in the example.
+Every option is off when it isn't set, except `forgejo_enabled` and
+`github_enabled`, which are on and skipped when `fj` or `gh` isn't
+logged in. The `claude.` options are nested under a `claude:` map, as in
+the example.
 
 | Option                            | Type   | Description                                                                                                                                                            |
 | --------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `forgejo_enabled`                 | bool   | Passes `FORGEJO_TOKEN` (from `fj auth token`) and your host's fj config (without its token) into the container.                                                        |
+| `forgejo_enabled`                 | bool   | Passes `FORGEJO_TOKEN` (from `fj auth token`) and your host's fj config (without its token) into the container. On by default; skipped when not logged in.             |
+| `github_enabled`                  | bool   | Passes `GH_TOKEN` (from `gh auth token`) into the container. On by default; skipped when not logged in.                                                                |
 | `op_allowed_secret_refs`          | list   | `op://` refs that `op` in the container may read through your host's `op`. See [1Password CLI](#1password-cli).                                                        |
 | `extra_secret_env_vars`           | map    | `NAME: op://ref` entries; each 1Password secret is passed into the container as the environment variable `NAME`.                                                       |
 | `network_host`                    | bool   | Runs the container on the host's network, so it can reach every service listening on localhost. Otherwise host services are only reachable via `host.docker.internal`. |

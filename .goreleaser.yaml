@@ -14,7 +14,7 @@ builds:
       - -s
       - -w
       ## <<Stencil::Block(asbxLdflags)>>
-
+      - -X git.rgst.io/jaredallard/asbx/internal/sandbox.imageTag={{ .Tag }}
       ## <</Stencil::Block>>
     env:
       - CGO_ENABLED=0

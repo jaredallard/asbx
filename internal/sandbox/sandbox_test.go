@@ -162,3 +162,98 @@ func TestBuildOPBridgeInvalidRef(t *testing.T) {
 	_, err := Build(t.Context(), host, &fakeAgent{})
 	assert.ErrorContains(t, err, "must be an op:// ref")
 }
+
+// fjConfigPath points the user config directory at a temporary one and
+// returns where fj's configuration is in it.
+func fjConfigPath(t *testing.T) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", dir)
+
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		t.Fatalf("UserConfigDir() = %v", err)
+	}
+
+	return filepath.Join(configDir, "fj", "config.json")
+}
+
+// TestForgejo verifies that fj's token and configuration are passed in
+// when fj is logged in.
+func TestForgejo(t *testing.T) {
+	path := fjConfigPath(t)
+	assert.NilError(t, os.MkdirAll(filepath.Dir(path), 0o750))
+	assert.NilError(t, os.WriteFile(path, []byte("{}"), 0o600))
+
+	cmdexec.UseMockExecutor(t, cmdexec.NewMockExecutor(&cmdexec.MockCommand{
+		Name:   "fj",
+		Args:   []string{"auth", "token"},
+		Stdout: []byte("hunter2\n"),
+	}))
+
+	run := &docker.Run{}
+	assert.NilError(t, forgejo(t.Context(), run))
+	assert.DeepEqual(t, run.Args(), []string{
+		"--env", "FORGEJO_TOKEN",
+		"--mount", "type=bind,source=" + path + ",target=" + ReadOnlyHostDir + "/fj-config.json,readonly",
+	})
+}
+
+// TestForgejoWithoutConfig verifies that Forgejo is skipped, without an
+// error, when fj has no configuration.
+func TestForgejoWithoutConfig(t *testing.T) {
+	fjConfigPath(t)
+	cmdexec.UseMockExecutor(t, cmdexec.NewMockExecutor())
+
+	run := &docker.Run{}
+	assert.NilError(t, forgejo(t.Context(), run))
+	assert.Equal(t, len(run.Args()), 0)
+}
+
+// TestForgejoNotLoggedIn verifies that Forgejo is skipped, without an
+// error, when fj can't print a token.
+func TestForgejoNotLoggedIn(t *testing.T) {
+	path := fjConfigPath(t)
+	assert.NilError(t, os.MkdirAll(filepath.Dir(path), 0o750))
+	assert.NilError(t, os.WriteFile(path, []byte("{}"), 0o600))
+
+	cmdexec.UseMockExecutor(t, cmdexec.NewMockExecutor(&cmdexec.MockCommand{
+		Name: "fj",
+		Args: []string{"auth", "token"},
+		Err:  errors.New("exit status 1"),
+	}))
+
+	run := &docker.Run{}
+	assert.NilError(t, forgejo(t.Context(), run))
+	assert.Equal(t, len(run.Args()), 0)
+}
+
+// TestGitHub verifies that gh's token is passed in as GH_TOKEN when gh
+// is logged in.
+func TestGitHub(t *testing.T) {
+	cmdexec.UseMockExecutor(t, cmdexec.NewMockExecutor(&cmdexec.MockCommand{
+		Name:   "gh",
+		Args:   []string{"auth", "token"},
+		Stdout: []byte("hunter2\n"),
+	}))
+
+	run := &docker.Run{}
+	github(t.Context(), run)
+	assert.DeepEqual(t, run.Args(), []string{"--env", "GH_TOKEN"})
+}
+
+// TestGitHubNotLoggedIn verifies that GitHub is skipped when gh can't
+// print a token.
+func TestGitHubNotLoggedIn(t *testing.T) {
+	cmdexec.UseMockExecutor(t, cmdexec.NewMockExecutor(&cmdexec.MockCommand{
+		Name: "gh",
+		Args: []string{"auth", "token"},
+		Err:  errors.New("exit status 1"),
+	}))
+
+	run := &docker.Run{}
+	github(t.Context(), run)
+	assert.Equal(t, len(run.Args()), 0)
+}

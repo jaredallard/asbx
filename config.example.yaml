@@ -3,7 +3,13 @@
 # forgejo_enabled when set to true enables passing through forgejo
 # authentication via `FORGEJO_TOKEN`. It also mirrors in the host
 # configuration found at `~/Library/Application Support/fj/config.json`.
+# On by default, and skipped when `fj` isn't logged in.
 forgejo_enabled: true
+
+# github_enabled when set to true enables passing through GitHub
+# authentication from `gh auth token` via `GH_TOKEN`. On by default, and
+# skipped when `gh` isn't logged in.
+github_enabled: true
 
 # op_allowed_secret_refs are the 1Password `op://` refs that `op read`
 # and `op run` inside the container may read through the host's `op`,
@@ -21,7 +27,7 @@ op_allowed_secret_refs: []
 # environment variable, where the agent can read it. For example:
 #
 # extra_secret_env_vars:
-#   GITHUB_TOKEN: op://Private/github/credential
+#   NPM_TOKEN: op://Private/npm/credential
 extra_secret_env_vars: {}
 
 # network_host when set to true runs the container on the host's
