@@ -22,6 +22,7 @@ package sandbox
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"hash/crc32"
@@ -30,8 +31,10 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 
 	"git.rgst.io/jaredallard/asbx/internal/docker"
+	"git.rgst.io/jaredallard/asbx/internal/opbridge"
 	"go.rgst.io/jaredallard/cmdexec/v2"
 )
 
@@ -127,6 +130,28 @@ func sshAgent(run *docker.Run, goos string) {
 	run.Mount(hostSock, sshAuthSock, false)
 }
 
+// opBridge lets op in the container read the refs in entries through
+// the host's op. The bridge itself is started by Run, alongside the
+// container.
+func opBridge(run *docker.Run, entries []string) error {
+	allow, err := opbridge.ParseAllowlist(entries)
+	if err != nil {
+		return err
+	}
+
+	if allow.Empty() {
+		return nil
+	}
+
+	if _, err := cmdexec.LookPath("op"); err != nil {
+		return errors.New("OP_ALLOWED_SECRET_REFS is set but op isn't installed on this host, install the 1Password CLI")
+	}
+
+	run.Env(opbridge.SocketEnv + "=" + opbridge.Socket)
+
+	return nil
+}
+
 // protectRepository mounts the files in the working directory that
 // could result in execution on the host read-only.
 func protectRepository(host *Host, run *docker.Run) error {
@@ -159,16 +184,11 @@ func configure(ctx context.Context, host *Host, run *docker.Run) error {
 		return err
 	}
 
-	// The 1Password app's CLI integration can't reach into the
-	// container, so op authenticates there with a service account
-	// instead.
-	opServiceAccount := Secret{
-		Env:  "OP_SERVICE_ACCOUNT_TOKEN",
-		Ref:  cfg.OPServiceAccountTokenSecretRef,
-		Name: "1Password Service Account Token",
-		Help: "create a service account at https://www.1password.dev/service-accounts/get-started/",
+	if err := AddSecrets(ctx, run, secrets...); err != nil {
+		return err
 	}
-	if err := AddSecrets(ctx, run, append([]Secret{opServiceAccount}, secrets...)...); err != nil {
+
+	if err := opBridge(run, cfg.OPAllowedSecretRefs); err != nil {
 		return err
 	}
 
@@ -209,6 +229,10 @@ func Build(ctx context.Context, host *Host, agent Agent) (*docker.Run, error) {
 	run.Volume("asbx-" + id + "-mise-state:/home/ubuntu/.local/state/mise")
 	run.Volume("asbx-" + id + "-mise-cache:/home/ubuntu/.cache/mise")
 
+	// Named so the op bridge can find it. The random suffix lets more
+	// than one run in the same directory.
+	run.SetName("asbx-" + id + "-" + strings.ToLower(rand.Text()[:8]))
+
 	if err := configure(ctx, host, run); err != nil {
 		return nil, err
 	}
@@ -231,4 +255,38 @@ func Build(ctx context.Context, host *Host, agent Agent) (*docker.Run, error) {
 	)
 
 	return run, nil
+}
+
+// Run runs agent in a sandbox for host with args, attached to the
+// terminal, until it exits. A non-zero exit is returned as a
+// [docker.ExitError].
+func Run(ctx context.Context, host *Host, agent Agent, args []string) error {
+	run, err := Build(ctx, host, agent)
+	if err != nil {
+		return err
+	}
+
+	allow, err := opbridge.ParseAllowlist(host.Config.OPAllowedSecretRefs)
+	if err != nil {
+		return err
+	}
+
+	cmd := append([]string{Entrypoint}, args...)
+	if allow.Empty() {
+		return docker.Exec(ctx, run, Image, cmd)
+	}
+
+	// The bridge runs for as long as the container does.
+	bridgeCtx, stopBridge := context.WithCancel(ctx)
+
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		opbridge.Run(bridgeCtx, run.Name(), allow)
+	})
+
+	err = docker.Exec(ctx, run, Image, cmd)
+	stopBridge()
+	wg.Wait()
+
+	return err
 }

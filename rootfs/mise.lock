@@ -2,32 +2,6 @@
 
 lockfile_version = 3
 
-[[tools."aqua:1password/cli"]]
-version = "2.41.1"
-backend = "aqua:1password/cli"
-specifiers = ["2.41.1"]
-
-[tools."aqua:1password/cli"."platforms.linux-arm64"]
-url = "https://cache.agilebits.com/dist/1P/op2/pkg/v2.41.1/op_linux_arm64_v2.41.1.zip"
-
-[tools."aqua:1password/cli"."platforms.linux-arm64-musl"]
-url = "https://cache.agilebits.com/dist/1P/op2/pkg/v2.41.1/op_linux_arm64_v2.41.1.zip"
-
-[tools."aqua:1password/cli"."platforms.linux-x64"]
-url = "https://cache.agilebits.com/dist/1P/op2/pkg/v2.41.1/op_linux_amd64_v2.41.1.zip"
-
-[tools."aqua:1password/cli"."platforms.linux-x64-musl"]
-url = "https://cache.agilebits.com/dist/1P/op2/pkg/v2.41.1/op_linux_amd64_v2.41.1.zip"
-
-[tools."aqua:1password/cli"."platforms.macos-arm64"]
-url = "https://cache.agilebits.com/dist/1P/op2/pkg/v2.41.1/op_darwin_arm64_v2.41.1.zip"
-
-[tools."aqua:1password/cli"."platforms.macos-x64"]
-url = "https://cache.agilebits.com/dist/1P/op2/pkg/v2.41.1/op_darwin_amd64_v2.41.1.zip"
-
-[tools."aqua:1password/cli"."platforms.windows-x64"]
-url = "https://cache.agilebits.com/dist/1P/op2/pkg/v2.41.1/op_windows_amd64_v2.41.1.zip"
-
 [[tools.claude]]
 version = "2.1.310"
 backend = "aqua:anthropics/claude-code"
@@ -107,6 +81,96 @@ url_api = "https://api.github.com/repos/sharkdp/fd/releases/assets/530484719"
 checksum = "sha256:a227701b8551c35a9931d9f6da75503cf86d88e182d71fb849a70864c5d57cd7"
 url = "https://github.com/sharkdp/fd/releases/download/v10.5.0/fd-v10.5.0-x86_64-pc-windows-msvc.zip"
 url_api = "https://api.github.com/repos/sharkdp/fd/releases/assets/530482901"
+
+[[tools."forgejo:idlerealm-public/tools"]]
+version = "1.2.0"
+backend = "forgejo:idlerealm-public/tools"
+specifiers = ["1.2.0"]
+
+[tools."forgejo:idlerealm-public/tools".options]
+api_url = "https://git.rgst.io/api/v1"
+
+[tools."forgejo:idlerealm-public/tools"."platforms.linux-arm64"]
+checksum = "sha256:070d85080d81b83f9024589e5ab38d9931487a5492dfab3fb6e9712cab7306ca"
+url = "https://git.rgst.io/idlerealm-public/tools/releases/download/v1.2.0/tools_1.2.0_linux_arm64.tar.gz"
+url_api = "https://git.rgst.io/attachments/be571f17-9501-410c-858d-d0bcf7df21a6"
+
+[tools."forgejo:idlerealm-public/tools"."platforms.linux-arm64-musl"]
+checksum = "sha256:070d85080d81b83f9024589e5ab38d9931487a5492dfab3fb6e9712cab7306ca"
+url = "https://git.rgst.io/idlerealm-public/tools/releases/download/v1.2.0/tools_1.2.0_linux_arm64.tar.gz"
+url_api = "https://git.rgst.io/attachments/be571f17-9501-410c-858d-d0bcf7df21a6"
+
+[tools."forgejo:idlerealm-public/tools"."platforms.linux-x64"]
+checksum = "sha256:3f08a68781aaefb45b25e7a3121f6061c2b98548f6f35d6abdd91f601904c6b9"
+url = "https://git.rgst.io/idlerealm-public/tools/releases/download/v1.2.0/tools_1.2.0_linux_amd64.tar.gz"
+url_api = "https://git.rgst.io/attachments/2ecd23d2-b18d-406e-85d9-d18321e4b9ce"
+
+[tools."forgejo:idlerealm-public/tools"."platforms.linux-x64-musl"]
+checksum = "sha256:3f08a68781aaefb45b25e7a3121f6061c2b98548f6f35d6abdd91f601904c6b9"
+url = "https://git.rgst.io/idlerealm-public/tools/releases/download/v1.2.0/tools_1.2.0_linux_amd64.tar.gz"
+url_api = "https://git.rgst.io/attachments/2ecd23d2-b18d-406e-85d9-d18321e4b9ce"
+
+[tools."forgejo:idlerealm-public/tools"."platforms.macos-arm64"]
+checksum = "sha256:a8e8d6d02418baecd8cc0e00492836a352b54c8a053a5410ce52ed328ad36326"
+url = "https://git.rgst.io/idlerealm-public/tools/releases/download/v1.2.0/tools_1.2.0_darwin_arm64.tar.gz"
+url_api = "https://git.rgst.io/attachments/4a5e6912-b42d-4470-af96-a68c8a3a6e33"
+
+[tools."forgejo:idlerealm-public/tools"."platforms.macos-x64"]
+checksum = "sha256:41e1c534454f2d7f5116c86dd0083a52e9578425440894b59deab0712b2da1c7"
+url = "https://git.rgst.io/idlerealm-public/tools/releases/download/v1.2.0/tools_1.2.0_darwin_amd64.tar.gz"
+url_api = "https://git.rgst.io/attachments/28febbbf-d7a2-4f86-96fb-c89c1a925735"
+
+[tools."forgejo:idlerealm-public/tools"."platforms.windows-x64"]
+checksum = "sha256:70d9084f136a4dc07c73c8ba631a9817fbaf1fab9ec0572bdcafd4fed4848ca3"
+url = "https://git.rgst.io/idlerealm-public/tools/releases/download/v1.2.0/tools_1.2.0_windows_amd64.tar.gz"
+url_api = "https://git.rgst.io/attachments/a0f29984-cf10-43e0-a161-63bb79a66c9a"
+
+[[tools.gh]]
+version = "2.103.1"
+backend = "aqua:cli/cli"
+specifiers = ["2.103.1"]
+
+[tools.gh."platforms.linux-arm64"]
+checksum = "sha256:25b1287471a73a3cca32e5d2d2798ae26abea0243db1b9e4a8c1be506fad1bfe"
+url = "https://github.com/cli/cli/releases/download/v2.103.1/gh_2.103.1_linux_arm64.tar.gz"
+url_api = "https://api.github.com/repos/cli/cli/releases/assets/669692610"
+provenance = "github-attestations"
+
+[tools.gh."platforms.linux-arm64-musl"]
+checksum = "sha256:25b1287471a73a3cca32e5d2d2798ae26abea0243db1b9e4a8c1be506fad1bfe"
+url = "https://github.com/cli/cli/releases/download/v2.103.1/gh_2.103.1_linux_arm64.tar.gz"
+url_api = "https://api.github.com/repos/cli/cli/releases/assets/669692610"
+provenance = "github-attestations"
+
+[tools.gh."platforms.linux-x64"]
+checksum = "sha256:57500f347b5e84efb6578c9b644eeb3b4e54046762635a939dd0ee2cca1c1add"
+url = "https://github.com/cli/cli/releases/download/v2.103.1/gh_2.103.1_linux_amd64.tar.gz"
+url_api = "https://api.github.com/repos/cli/cli/releases/assets/669692567"
+provenance = "github-attestations"
+
+[tools.gh."platforms.linux-x64-musl"]
+checksum = "sha256:57500f347b5e84efb6578c9b644eeb3b4e54046762635a939dd0ee2cca1c1add"
+url = "https://github.com/cli/cli/releases/download/v2.103.1/gh_2.103.1_linux_amd64.tar.gz"
+url_api = "https://api.github.com/repos/cli/cli/releases/assets/669692567"
+provenance = "github-attestations"
+
+[tools.gh."platforms.macos-arm64"]
+checksum = "sha256:71b5ffc74bb69cdb72ca397d9b486d78755019be33ca927288299197ad7f6807"
+url = "https://github.com/cli/cli/releases/download/v2.103.1/gh_2.103.1_macOS_arm64.zip"
+url_api = "https://api.github.com/repos/cli/cli/releases/assets/669692717"
+provenance = "github-attestations"
+
+[tools.gh."platforms.macos-x64"]
+checksum = "sha256:9adb0d23fe3c463e8600ea5288b5ac0ba9438a49678db0b3e955471be1df42c3"
+url = "https://github.com/cli/cli/releases/download/v2.103.1/gh_2.103.1_macOS_amd64.zip"
+url_api = "https://api.github.com/repos/cli/cli/releases/assets/669692675"
+provenance = "github-attestations"
+
+[tools.gh."platforms.windows-x64"]
+checksum = "sha256:a1d22e6f0dea586cf69478aaccbc6e3370dbc954c383cd412b9959635591dc5f"
+url = "https://github.com/cli/cli/releases/download/v2.103.1/gh_2.103.1_windows_amd64.zip"
+url_api = "https://api.github.com/repos/cli/cli/releases/assets/669692783"
+provenance = "github-attestations"
 
 [[tools.rg]]
 version = "15.2.0"

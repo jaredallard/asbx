@@ -21,20 +21,16 @@ package onepassword
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 
 	"go.rgst.io/jaredallard/cmdexec/v2"
 )
 
-// Read returns the secret at ref, an op:// secret reference. op may
-// prompt to unlock 1Password, so it's given the terminal's stdin and
-// stderr.
-func Read(ctx context.Context, ref string) (string, error) {
-	cmd := cmdexec.CommandContext(ctx, "op", "read", ref)
-	cmd.SetStdin(os.Stdin)
-	cmd.SetStderr(os.Stderr)
-
+// read returns the secret at ref from op's output, or op's error.
+func read(cmd cmdexec.Cmd) (string, error) {
 	out, err := cmd.Output()
 	if err != nil {
 		return "", err
@@ -47,4 +43,29 @@ func Read(ctx context.Context, ref string) (string, error) {
 	}
 
 	return secret, nil
+}
+
+// Read returns the secret at ref, an op:// secret reference. op may
+// prompt to unlock 1Password, so it's given the terminal's stdin and
+// stderr.
+func Read(ctx context.Context, ref string) (string, error) {
+	cmd := cmdexec.CommandContext(ctx, "op", "read", ref)
+	cmd.SetStdin(os.Stdin)
+	cmd.SetStderr(os.Stderr)
+
+	return read(cmd)
+}
+
+// ReadNonInteractive is [Read] for when something else, such as the
+// agent, controls the terminal and writing to it would be bad UX.
+func ReadNonInteractive(ctx context.Context, ref string) (string, error) {
+	secret, err := read(cmdexec.CommandContext(ctx, "op", "read", ref))
+
+	// Output captures stderr when it isn't set.
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && len(exitErr.Stderr) > 0 {
+		return "", fmt.Errorf("%w: %s", err, strings.TrimSpace(string(exitErr.Stderr)))
+	}
+
+	return secret, err
 }

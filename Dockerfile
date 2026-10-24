@@ -33,6 +33,15 @@ COPY rootfs/gitconfig /etc/gitconfig
 
 COPY --chmod=0755 rootfs/entrypoint.sh /opt/asbx/entrypoint.sh
 
+ARG TARGETPLATFORM
+COPY --chmod=0755 $TARGETPLATFORM/asbx-op /usr/local/bin/asbx-op
+RUN <<EOF
+	set -euo pipefail
+
+	ln -s asbx-op /usr/local/bin/op
+	install -d -o ubuntu -g ubuntu /run/asbx
+EOF
+
 # Assign the existing ubuntu user to the sudoers
 RUN <<EOF
 	set -euo pipefail

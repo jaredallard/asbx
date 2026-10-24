@@ -26,6 +26,27 @@ builds:
       - darwin
       - windows
     mod_timestamp: "{{ .CommitTimestamp }}"
+  - main: ./cmd/asbx-op
+    id: asbx-op
+    binary: asbx-op
+    flags:
+      - -trimpath
+    ldflags:
+      - -s
+      - -w
+      ## <<Stencil::Block(asbx-opLdflags)>>
+
+      ## <</Stencil::Block>>
+    env:
+      - CGO_ENABLED=0
+    goarch:
+      - amd64
+      - arm64
+    goos:
+      - linux
+      - darwin
+      - windows
+    mod_timestamp: "{{ .CommitTimestamp }}"
 dockers_v2:
   - images:
       - git.rgst.io/jaredallard/{{ .ProjectName }}
@@ -96,7 +117,8 @@ notarize:
         key: "{{.Env.MACOS_NOTARY_KEY}}"
 
 archives:
-  - format_overrides:
+  - ids: [asbx]
+    format_overrides:
       - goos: windows
         formats: [zip]
 ## <</Stencil::Block>>

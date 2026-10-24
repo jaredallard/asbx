@@ -1,7 +1,25 @@
+// Copyright (C) 2026 asbx contributors
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// SPDX-License-Identifier: GPL-3.0
+
 package onepassword
 
 import (
 	"errors"
+	"os/exec"
 	"testing"
 
 	"go.rgst.io/jaredallard/cmdexec/v2"
@@ -49,4 +67,18 @@ func TestReadErrors(t *testing.T) {
 			assert.Assert(t, err != nil, "Read() = %q, want error", got)
 		})
 	}
+}
+
+// TestReadNonInteractiveError verifies that why op failed, which it
+// prints to stderr, is part of the error since there's no terminal to
+// show it on.
+func TestReadNonInteractiveError(t *testing.T) {
+	cmdexec.UseMockExecutor(t, cmdexec.NewMockExecutor(&cmdexec.MockCommand{
+		Name: "op",
+		Args: []string{"read", "op://a/b/c"},
+		Err:  &exec.ExitError{Stderr: []byte("[ERROR] not signed in\n")},
+	}))
+
+	_, err := ReadNonInteractive(t.Context(), "op://a/b/c")
+	assert.ErrorContains(t, err, "[ERROR] not signed in")
 }

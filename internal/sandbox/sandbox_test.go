@@ -10,6 +10,7 @@ import (
 
 	"git.rgst.io/jaredallard/asbx/internal/config"
 	"git.rgst.io/jaredallard/asbx/internal/docker"
+	"go.rgst.io/jaredallard/cmdexec/v2"
 	"gotest.tools/v3/assert"
 )
 
@@ -100,4 +101,64 @@ func TestBuildProtectsRepository(t *testing.T) {
 		mount := "type=bind,source=" + host.WorkDir + "/" + path + ",target=" + host.PWD + "/" + path + ",readonly"
 		assert.Assert(t, slices.Contains(args, mount), "Build() args = %q, want %q", args, mount)
 	}
+}
+
+// TestBuildNamesContainer verifies that each container gets its own
+// name, for the op bridge to find it by.
+func TestBuildNamesContainer(t *testing.T) {
+	host := newTestHost(t)
+
+	first, err := Build(t.Context(), host, &fakeAgent{})
+	assert.NilError(t, err)
+
+	second, err := Build(t.Context(), host, &fakeAgent{})
+	assert.NilError(t, err)
+
+	assert.Assert(t, first.Name() != "", "Build() didn't name the container")
+	assert.Assert(t, first.Name() != second.Name(), "Build() named two containers %q", first.Name())
+	assert.Assert(t, slices.Contains(first.Args(), first.Name()), "Build() args = %q, want --name %q", first.Args(), first.Name())
+}
+
+// TestBuildOPBridge verifies that the container is told where the op
+// bridge is only when there are refs it may read.
+func TestBuildOPBridge(t *testing.T) {
+	mock := cmdexec.NewMockExecutor()
+	mock.AddLookPath("op", "/usr/bin/op")
+	cmdexec.UseMockExecutor(t, mock)
+
+	host := newTestHost(t)
+	socketEnv := "ASBX_OP_SOCKET=/run/asbx/op.sock"
+
+	run, err := Build(t.Context(), host, &fakeAgent{})
+	assert.NilError(t, err)
+	assert.Assert(t, !slices.Contains(run.Args(), socketEnv), "Build() args = %q, want no %q", run.Args(), socketEnv)
+
+	host.Config.OPAllowedSecretRefs = []string{"op://a/b/c"}
+	run, err = Build(t.Context(), host, &fakeAgent{})
+	assert.NilError(t, err)
+	assert.Assert(t, slices.Contains(run.Args(), socketEnv), "Build() args = %q, want %q", run.Args(), socketEnv)
+}
+
+// TestBuildOPBridgeWithoutOP verifies that asbx refuses to run when
+// refs are allowed but there's no op on the host to read them with.
+func TestBuildOPBridgeWithoutOP(t *testing.T) {
+	mock := cmdexec.NewMockExecutor()
+	mock.AddLookPathError("op", errors.New("executable file not found in $PATH"))
+	cmdexec.UseMockExecutor(t, mock)
+
+	host := newTestHost(t)
+	host.Config.OPAllowedSecretRefs = []string{"op://a/b/c"}
+
+	_, err := Build(t.Context(), host, &fakeAgent{})
+	assert.ErrorContains(t, err, "op isn't installed on this host")
+}
+
+// TestBuildOPBridgeInvalidRef verifies that an allowlist entry that
+// isn't an op:// ref fails the build.
+func TestBuildOPBridgeInvalidRef(t *testing.T) {
+	host := newTestHost(t)
+	host.Config.OPAllowedSecretRefs = []string{"Private/bank/password"}
+
+	_, err := Build(t.Context(), host, &fakeAgent{})
+	assert.ErrorContains(t, err, "must be an op:// ref")
 }

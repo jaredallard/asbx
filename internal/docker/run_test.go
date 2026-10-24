@@ -38,3 +38,12 @@ func TestRunMount(t *testing.T) {
 		"--mount", "type=bind,source=/c,target=/d",
 	})
 }
+
+// TestRunSetName verifies that a named container is run with --name.
+func TestRunSetName(t *testing.T) {
+	var run Run
+	run.SetName("asbx-a")
+
+	assert.Equal(t, run.Name(), "asbx-a")
+	assert.DeepEqual(t, run.Args(), []string{"--name", "asbx-a"})
+}

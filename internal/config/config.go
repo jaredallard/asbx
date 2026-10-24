@@ -38,9 +38,10 @@ type Config struct {
 	// configuration into the container.
 	ForgejoEnabled bool `env:"FORGEJO_ENABLED"`
 
-	// OPServiceAccountTokenSecretRef is the 1Password ref to a service
-	// account token that op uses inside the container.
-	OPServiceAccountTokenSecretRef string `env:"OP_SERVICE_ACCOUNT_TOKEN_SECRET_REF"`
+	// OPAllowedSecretRefs are the op:// refs, where * matches within a
+	// path segment and /**/ across them, that op inside the container
+	// may read through the host's op.
+	OPAllowedSecretRefs []string `env:"OP_ALLOWED_SECRET_REFS"`
 
 	// NetworkHost runs the container on the host's network.
 	NetworkHost bool `env:"NETWORK_HOST"`

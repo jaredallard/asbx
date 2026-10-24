@@ -41,13 +41,7 @@ func run(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	dockerRun, err := sandbox.Build(ctx, host, claude.New())
-	if err != nil {
-		return err
-	}
-
-	args := append([]string{sandbox.Entrypoint}, cmd.Args().Slice()...)
-	return docker.Exec(ctx, dockerRun, sandbox.Image, args)
+	return sandbox.Run(ctx, host, claude.New(), cmd.Args().Slice())
 }
 
 func main() {
@@ -62,13 +56,9 @@ func main() {
 
 		Action: run,
 
-		// Errors are reported by main, urfave/cli would otherwise exit
-		// silently on any error with an exit code, such as op's.
 		ExitErrHandler: func(context.Context, *cli.Command, error) {},
 	}
 
-	// Stopping asbx stops docker with it, rather than leaving it
-	// running without asbx.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 
 	err := cmd.Run(ctx, os.Args)

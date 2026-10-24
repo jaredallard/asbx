@@ -41,6 +41,9 @@ func (e *ExitError) Error() string {
 type Run struct {
 	args []string
 
+	// name is the container's name, if it was given one.
+	name string
+
 	// env is the NAME=value entries docker runs with or NAME to prevent
 	// leakage.
 	env []string
@@ -49,6 +52,17 @@ type Run struct {
 // Arg adds raw arguments, such as flags without a dedicated method.
 func (r *Run) Arg(args ...string) {
 	r.args = append(r.args, args...)
+}
+
+// SetName names the container, so that it can be found while it runs.
+func (r *Run) SetName(name string) {
+	r.name = name
+	r.Arg("--name", name)
+}
+
+// Name returns the container's name, or "" if it wasn't given one.
+func (r *Run) Name() string {
+	return r.name
 }
 
 // Env passes an environment variable into the container. env is either

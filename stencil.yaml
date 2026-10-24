@@ -4,6 +4,7 @@ arguments:
   license: GPL-3.0
   commands:
     - asbx
+    - asbx-op
   vcs: forgejo
   vcs_host: git.rgst.io
   release_targets: [vcs]

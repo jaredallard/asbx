@@ -9,7 +9,9 @@ your local machine.
   - You can technically use Docker for Mac, but your container will not
     have access to services running your mac (which may or may not be
     acceptable!)
-- 1Password: Used to source tokens passed through to the agent.
+- Optional: [1Password CLI](https://developer.1password.com/docs/cli/get-started/):
+  Used to source tokens passed through to the agent, and by `op` in the
+  container.
 
 ## Features
 
@@ -17,8 +19,8 @@ your local machine.
 - Git commit signing works via ssh-agent (e.g., 1Password).
 - Forgejo authentication is passed through via `fj auth token` if
   enabled.
-- `op` (1Password CLI) works in the container through a service
-  account, if configured.
+- `op read` and `op run` work in the container through your host's
+  `op`, limited to the secrets you allow if enabled.
 
 ## Installation
 
@@ -60,9 +62,9 @@ running asbx in a repo you don't trust.
   `CLAUDE_CODE_OAUTH_TOKEN` from.
 - `LITELLM_TOKEN_SECRET_REF`: 1Password `op://` ref to read
   `LITELLM_API_KEY` from.
-- `OP_SERVICE_ACCOUNT_TOKEN_SECRET_REF`: 1Password `op://` ref to a
-  service account token, so `op` works in the container. See
-  [1Password CLI](#1password-cli).
+- `OP_ALLOWED_SECRET_REFS`: comma-separated `op://` refs that `op` in
+  the container may read through your host's `op`. See [1Password
+  CLI](#1password-cli).
 - `EXTRA_SECRET_ENV_VARS`: comma-separated `NAME:op://ref` entries; each
   1Password secret is passed into the container as the environment
   variable `NAME`.
@@ -79,19 +81,23 @@ running asbx in a repo you don't trust.
 
 ### 1Password CLI
 
-The 1Password app's CLI integration can't be passed into the container.
-On macOS, `op` talks to the app over XPC and both sides verify each
-other's code signature, which can't cross into the container's VM. On
-Linux, the app trusts any process in the `onepassword-cli` group, which
-an agent with `sudo` could fake to reach your whole account.
+The 1Password App's desktop integration is unable to be forwarded like
+the SSH agent due to more strict validation. To work around this, we run
+a container only proxy with a shim inside the container that allows
+specific key paths to be read using the host `op`. This requires `op` to
+be installed on the host.
 
-Instead, `op` in the container uses a [service
-account](https://www.1password.dev/service-accounts/get-started/):
+To allow specific secret refs, use the `op://` syntax like so, with
+wildcards to signify wider access:
 
-1. Create a service account with access to only the vaults the agent
-   needs, read-only if it doesn't need to write.
-2. Store its token in 1Password.
-3. Set `OP_SERVICE_ACCOUNT_TOKEN_SECRET_REF` to that token's `op://` ref.
+```bash
+OP_ALLOWED_SECRET_REFS="op://Dev/github/token,op://Dev/aws/*,op://Agent/**"
+```
+
+Query params such as `?attribute=otp` are supported.
+
+> [!WARNING]
+> Only `op read` and `op run` are supported in the container.
 
 ## Security
 
@@ -120,14 +126,12 @@ What it doesn't protect against:
   deny the request.
 - **Tokens**: every token passed in, including `EXTRA_SECRET_ENV_VARS`,
   is readable by the agent. Mitigate this with scoped credentials. The
-  agent can read everything the 1Password service account can, so keep
-  its vaults minimal.
-- **Project config**: a repo's `.asbx` is parsed rather than run, but
-  it can still enable host networking, extra mounts or secrets, so check
-  it before running asbx in a repo you don't trust. An existing
-  `.asbx` is mounted read-only, but the agent can create one (or a nested
-  `.git` with its own `.asbx`) when there isn't one, and it applies on
-  the next run.
+  agent can read every secret `OP_ALLOWED_SECRET_REFS` allows, so keep
+  it as minimal as possible.
+- **Project config**: a repo's or work dir `.asbx` configuration can
+  grant more permissions, mitigate this by validating before running.
+  When a configuration file already exists, the agent cannot modify it,
+  but it could create one.
 - **`CLAUDE_MIRROR_PROJECTS`**: when enabled, sessions and memory
   written in the container are read by Claude on the host, so they can
   carry prompt injection.

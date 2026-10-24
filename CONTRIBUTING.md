@@ -5,4 +5,13 @@ guidelines](https://github.com/jaredallard/jaredallard/blob/master/CONTRIBUTING.
 
 <!-- <<Stencil::Block(custom)>> -->
 
+## Building the image
+
+The image includes `asbx-op`, built for its platform by goreleaser, so
+it can't be built with `docker build` on its own. Build it with:
+
+```bash
+goreleaser release --snapshot --clean
+```
+
 <!-- <</Stencil::Block>> -->

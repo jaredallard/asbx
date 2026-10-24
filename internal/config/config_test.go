@@ -53,12 +53,12 @@ func TestLoad(t *testing.T) {
 		{
 			name: "Quoting",
 			files: []string{
-				`OP_SERVICE_ACCOUNT_TOKEN_SECRET_REF="op://a b/c"` + "\n" +
+				`EXTRA_SECRET_ENV_VARS="A:op://a b/c"` + "\n" +
 					`LITELLM_TOKEN_SECRET_REF='op://"d"/e'` + "\n" +
 					`CLAUDE_CODE_OAUTH_TOKEN_SECRET_REF=op://f/g`,
 			},
 			want: Config{
-				OPServiceAccountTokenSecretRef: "op://a b/c",
+				ExtraSecretEnvVars: []string{"A:op://a b/c"},
 				Claude: Claude{
 					LiteLLMTokenSecretRef: `op://"d"/e`,
 					OAuthTokenSecretRef:   "op://f/g",
@@ -69,11 +69,13 @@ func TestLoad(t *testing.T) {
 			name: "Lists",
 			files: []string{
 				`EXTRA_MOUNTS="/a,/b"` + "\n" +
-					"EXTRA_SECRET_ENV_VARS=A:op://x/y/z\n",
+					"EXTRA_SECRET_ENV_VARS=A:op://x/y/z\n" +
+					`OP_ALLOWED_SECRET_REFS="op://x/y/*,op://x/z/w"`,
 			},
 			want: Config{
-				ExtraMounts:        []string{"/a", "/b"},
-				ExtraSecretEnvVars: []string{"A:op://x/y/z"},
+				ExtraMounts:         []string{"/a", "/b"},
+				ExtraSecretEnvVars:  []string{"A:op://x/y/z"},
+				OPAllowedSecretRefs: []string{"op://x/y/*", "op://x/z/w"},
 			},
 		},
 		{
@@ -149,6 +151,13 @@ func TestLoadErrors(t *testing.T) {
 			name:    "UnknownOption",
 			content: "PATH=/tmp\n",
 			want:    ":1: unknown option PATH",
+		},
+		{
+			// Replaced by OP_ALLOWED_SECRET_REFS, so it's an error rather
+			// than silently doing nothing.
+			name:    "RemovedServiceAccountOption",
+			content: `OP_SERVICE_ACCOUNT_TOKEN_SECRET_REF="op://a/b/c"` + "\n",
+			want:    ":1: unknown option OP_SERVICE_ACCOUNT_TOKEN_SECRET_REF",
 		},
 		{
 			name:    "UnquotedWhitespace",
