@@ -88,7 +88,7 @@ func TestBuildAgentError(t *testing.T) {
 // that the hooks directory is created so it's protected too.
 func TestBuildProtectsRepository(t *testing.T) {
 	host := newTestHost(t)
-	for _, path := range []string{".git", ".asbx"} {
+	for _, path := range []string{".git", projectConfigFile} {
 		assert.NilError(t, mkfile(host.WorkDir, path, path == ".git"))
 	}
 	assert.NilError(t, mkfile(host.WorkDir, ".git/config", false))
@@ -97,7 +97,7 @@ func TestBuildProtectsRepository(t *testing.T) {
 	assert.NilError(t, err)
 
 	args := run.Args()
-	for _, path := range []string{".asbx", ".git/config", ".git/hooks"} {
+	for _, path := range []string{projectConfigFile, ".git/config", ".git/hooks"} {
 		mount := "type=bind,source=" + host.WorkDir + "/" + path + ",target=" + host.PWD + "/" + path + ",readonly"
 		assert.Assert(t, slices.Contains(args, mount), "Build() args = %q, want %q", args, mount)
 	}

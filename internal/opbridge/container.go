@@ -39,7 +39,7 @@ const requestTimeout = 10 * time.Second
 const startTimeout = 10 * time.Second
 
 // ErrUnavailable is returned by [Read] when the bridge isn't enabled.
-var ErrUnavailable = errors.New("op isn't available in this sandbox, set OP_ALLOWED_SECRET_REFS in asbx's configuration")
+var ErrUnavailable = errors.New("op isn't available in this sandbox, set op_allowed_secret_refs in asbx's configuration")
 
 // forward sends the request read from conn to the host on w, and
 // writes back the host's answer from responses.

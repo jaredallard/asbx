@@ -19,7 +19,9 @@ package sandbox
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,6 +29,16 @@ import (
 	"git.rgst.io/jaredallard/asbx/internal/config"
 	"git.rgst.io/jaredallard/asbx/internal/docker"
 	"go.rgst.io/jaredallard/cmdexec/v2"
+)
+
+// The configuration files, which are read in this order.
+const (
+	// userConfigFile is the user's configuration, in the config
+	// directory.
+	userConfigFile = "config.yaml"
+
+	// projectConfigFile is the project's configuration, at its root.
+	projectConfigFile = ".asbx.yaml"
 )
 
 // Host is where asbx is running: the paths the sandbox is built from
@@ -85,6 +97,21 @@ func projectRoot(ctx context.Context, workDir string) string {
 	return root
 }
 
+// checkLegacyConfig returns an error if legacy, a configuration file in
+// the KEY=value format that path replaced, exists. It's no longer read,
+// so its options would otherwise stop applying without anyone noticing.
+func checkLegacyConfig(legacy, path string) error {
+	_, err := os.Lstat(legacy)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	return fmt.Errorf("%q uses the old KEY=value format, which is no longer read, convert it to %q (see config.example.yaml)", legacy, path)
+}
+
 // NewHost resolves the host asbx is running on and reads its
 // configuration. It refuses working directories where the agent could
 // write to the user's home directory or its config.
@@ -117,10 +144,19 @@ func NewHost(ctx context.Context) (*Host, error) {
 	// overrides it. The repository can't run code through it, but it can
 	// turn options on, see Security in the README.
 	configDir := filepath.Join(home, ".config", "asbx")
-	cfg, err := config.Load(
-		filepath.Join(configDir, "config"),
-		filepath.Join(projectRoot(ctx, workDir), ".asbx"),
-	)
+	root := projectRoot(ctx, workDir)
+	userConfig := filepath.Join(configDir, userConfigFile)
+	projectConfig := filepath.Join(root, projectConfigFile)
+
+	if err := checkLegacyConfig(filepath.Join(configDir, "config"), userConfig); err != nil {
+		return nil, err
+	}
+
+	if err := checkLegacyConfig(filepath.Join(root, ".asbx"), projectConfig); err != nil {
+		return nil, err
+	}
+
+	cfg, err := config.Load(userConfig, projectConfig)
 	if err != nil {
 		return nil, err
 	}

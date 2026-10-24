@@ -75,7 +75,7 @@ func pattern(entry string) string {
 	return b.String()
 }
 
-// ParseAllowlist returns the Allowlist for OP_ALLOWED_SECRET_REFS
+// ParseAllowlist returns the Allowlist for op_allowed_secret_refs
 // entries, which are op:// refs where * matches anything within a
 // path segment and a /**/ segment matches any number of them.
 func ParseAllowlist(entries []string) (*Allowlist, error) {
@@ -86,7 +86,7 @@ func ParseAllowlist(entries []string) (*Allowlist, error) {
 		}
 
 		if !strings.HasPrefix(entry, refPrefix) {
-			return nil, fmt.Errorf("OP_ALLOWED_SECRET_REFS entry %q must be an op:// ref", entry)
+			return nil, fmt.Errorf("op_allowed_secret_refs entry %q must be an op:// ref", entry)
 		}
 
 		allow.patterns = append(allow.patterns, pattern(entry))

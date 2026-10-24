@@ -67,7 +67,7 @@ func managedSettingsPath(goos string) (string, error) {
 	case "windows":
 		return `C:\Program Files\ClaudeCode\managed-settings.json`, nil
 	default:
-		return "", fmt.Errorf("CLAUDE_MIRROR_MANAGED_SETTINGS isn't supported on %s", goos)
+		return "", fmt.Errorf("claude.mirror_managed_settings isn't supported on %s", goos)
 	}
 }
 
@@ -124,7 +124,7 @@ func (a *Agent) Configure(ctx context.Context, host *sandbox.Host, run *docker.R
 		}
 
 		if _, err := os.Stat(path); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: CLAUDE_MIRROR_MANAGED_SETTINGS is enabled but %s doesn't exist\n", path)
+			fmt.Fprintf(os.Stderr, "Warning: claude.mirror_managed_settings is enabled but %s doesn't exist\n", path)
 		} else {
 			run.Mount(path, "/etc/claude-code/managed-settings.json", true)
 		}

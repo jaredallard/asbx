@@ -9,7 +9,7 @@ your local machine.
   - You can technically use Docker for Mac, but your container will not
     have access to services running your mac (which may or may not be
     acceptable!)
-- Optional: [1Password CLI](https://developer.1password.com/docs/cli/get-started/):
+- [1Password CLI](https://developer.1password.com/docs/cli/get-started/):
   Used to source tokens passed through to the agent, and by `op` in the
   container.
 
@@ -39,45 +39,42 @@ Or add it to your mise config:
 
 ## Configuration
 
-asbx reads `~/.config/asbx/config` for configuration values. Note that
-it is NOT sourced, so shell expansion is not supported. Options are
-only read from config files, never from environment variables.
+asbx reads `~/.config/asbx/config.yaml` for configuration values.
 
-To get started, copy [config.example](config.example):
+To get started, copy [config.example.yaml](config.example.yaml):
 
 ```bash
 mkdir -p ~/.config/asbx
-cp config.example ~/.config/asbx/config
+cp config.example.yaml ~/.config/asbx/config.yaml
 ```
 
-Repositories can also have their own `.asbx` file at its git root (or
-the working directory outside of a git repo). It takes the same options,
-is read after `~/.config/asbx/config` so it overrides it, and is
-mounted read-only into the container. See [Security](#security) before
-running asbx in a repo you don't trust.
+Repositories can also have their own `.asbx.yaml` file at its git root
+(or the working directory outside of a git repo). It takes the same
+options, is read after `~/.config/asbx/config.yaml` so it overrides it,
+and is mounted read-only into the container. Each option it sets
+replaces the user's, except `extra_secret_env_vars`, which is merged by
+name. See [Security](#security) before running asbx in a repo you don't
+trust.
 
-- `FORGEJO_ENABLED`: `true` passes `FORGEJO_TOKEN` (from `fj auth token`)
-  and your host's fj config (without its token) into the container.
-- `CLAUDE_CODE_OAUTH_TOKEN_SECRET_REF`: 1Password `op://` ref to read
-  `CLAUDE_CODE_OAUTH_TOKEN` from.
-- `LITELLM_TOKEN_SECRET_REF`: 1Password `op://` ref to read
-  `LITELLM_API_KEY` from.
-- `OP_ALLOWED_SECRET_REFS`: comma-separated `op://` refs that `op` in
-  the container may read through your host's `op`. See [1Password
-  CLI](#1password-cli).
-- `EXTRA_SECRET_ENV_VARS`: comma-separated `NAME:op://ref` entries; each
-  1Password secret is passed into the container as the environment
-  variable `NAME`.
-- `CLAUDE_MIRROR_MANAGED_SETTINGS`: `true` mounts your OS specific
-  managed settings into the container.
-- `CLAUDE_MIRROR_PROJECTS`: `true` mounts this directory's Claude
-  sessions and memory read-write, so the host and container can resume
-  each other's sessions.
-- `NETWORK_HOST`: `true` runs the container on the host's network, so it
-  can reach every service listening on localhost. Otherwise host services
-  are only reachable via `host.docker.internal`.
-- `EXTRA_MOUNTS`: comma-separated absolute paths to mount read-only at
-  the same path inside the container.
+> [!NOTE]
+> The old `KEY=value` files, `~/.config/asbx/config` and `.asbx`, are
+> no longer read. asbx refuses to run while one exists, convert it to
+> YAML using [config.example.yaml](config.example.yaml).
+
+Every option is off when it isn't set. The `claude.` options are
+nested under a `claude:` map, as in the example.
+
+| Option                            | Type   | Description                                                                                                                                                            |
+| --------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `forgejo_enabled`                 | bool   | Passes `FORGEJO_TOKEN` (from `fj auth token`) and your host's fj config (without its token) into the container.                                                        |
+| `op_allowed_secret_refs`          | list   | `op://` refs that `op` in the container may read through your host's `op`. See [1Password CLI](#1password-cli).                                                        |
+| `extra_secret_env_vars`           | map    | `NAME: op://ref` entries; each 1Password secret is passed into the container as the environment variable `NAME`.                                                       |
+| `network_host`                    | bool   | Runs the container on the host's network, so it can reach every service listening on localhost. Otherwise host services are only reachable via `host.docker.internal`. |
+| `extra_mounts`                    | list   | Absolute paths to mount read-only at the same path inside the container.                                                                                               |
+| `claude.oauth_token_secret_ref`   | string | 1Password `op://` ref to read `CLAUDE_CODE_OAUTH_TOKEN` from.                                                                                                          |
+| `claude.litellm_token_secret_ref` | string | 1Password `op://` ref to read `LITELLM_API_KEY` from.                                                                                                                  |
+| `claude.mirror_managed_settings`  | bool   | Mounts your OS specific managed settings into the container.                                                                                                           |
+| `claude.mirror_projects`          | bool   | Mounts this directory's Claude sessions and memory read-write, so the host and container can resume each other's sessions.                                             |
 
 ### 1Password CLI
 
@@ -90,8 +87,11 @@ be installed on the host.
 To allow specific secret refs, use the `op://` syntax like so, with
 wildcards to signify wider access:
 
-```bash
-OP_ALLOWED_SECRET_REFS="op://Dev/github/token,op://Dev/aws/*,op://Agent/**"
+```yaml
+op_allowed_secret_refs:
+  - op://Dev/github/token
+  - op://Dev/aws/*
+  - op://Agent/**
 ```
 
 Query params such as `?attribute=otp` are supported.
@@ -124,15 +124,15 @@ What it doesn't protect against:
   host, not just for commit signing. Limit which keys are offered in
   1Password's `agent.toml`, or if using the Desktop integration, simply
   deny the request.
-- **Tokens**: every token passed in, including `EXTRA_SECRET_ENV_VARS`,
+- **Tokens**: every token passed in, including `extra_secret_env_vars`,
   is readable by the agent. Mitigate this with scoped credentials. The
-  agent can read every secret `OP_ALLOWED_SECRET_REFS` allows, so keep
+  agent can read every secret `op_allowed_secret_refs` allows, so keep
   it as minimal as possible.
-- **Project config**: a repo's or work dir `.asbx` configuration can
+- **Project config**: a repo's or work dir `.asbx.yaml` configuration can
   grant more permissions, mitigate this by validating before running.
   When a configuration file already exists, the agent cannot modify it,
   but it could create one.
-- **`CLAUDE_MIRROR_PROJECTS`**: when enabled, sessions and memory
+- **`claude.mirror_projects`**: when enabled, sessions and memory
   written in the container are read by Claude on the host, so they can
   carry prompt injection.
 

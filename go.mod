@@ -4,9 +4,9 @@ go 1.25
 
 require (
 	github.com/bmatcuk/doublestar/v4 v4.10.4
-	github.com/caarlos0/env/v11 v11.4.1
 	github.com/urfave/cli/v3 v3.14.0
 	go.rgst.io/jaredallard/cmdexec/v2 v2.1.0
+	go.yaml.in/yaml/v3 v3.0.5
 	gotest.tools/v3 v3.5.2
 )
 

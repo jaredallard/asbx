@@ -9,11 +9,14 @@ import (
 	"gotest.tools/v3/assert"
 )
 
-// TestExtraSecrets verifies that EXTRA_SECRET_ENV_VARS entries are
-// split on their first colon, since the op:// ref has colons of its
-// own, and that empty entries are skipped.
+// TestExtraSecrets verifies that extra_secret_env_vars entries become
+// secrets sorted by name, and that names with an empty ref are skipped.
 func TestExtraSecrets(t *testing.T) {
-	got, err := extraSecrets([]string{"GITHUB_TOKEN:op://a/b:c/d", "", "_X:op://e/f/g"})
+	got, err := extraSecrets(map[string]string{
+		"_X":           "op://e/f/g",
+		"SKIPPED":      "",
+		"GITHUB_TOKEN": "op://a/b:c/d",
+	})
 	assert.NilError(t, err)
 	assert.DeepEqual(t, got, []Secret{
 		{Env: "GITHUB_TOKEN", Ref: "op://a/b:c/d", Name: "GITHUB_TOKEN", Help: "create it"},
@@ -21,23 +24,24 @@ func TestExtraSecrets(t *testing.T) {
 	})
 }
 
-// TestExtraSecretsErrors verifies that malformed EXTRA_SECRET_ENV_VARS
-// entries are rejected.
+// TestExtraSecretsErrors verifies that extra_secret_env_vars entries
+// with an invalid name or a ref that isn't op:// are rejected.
 func TestExtraSecretsErrors(t *testing.T) {
 	tests := []struct {
-		name  string
-		entry string
+		name    string
+		envName string
+		ref     string
+		want    string
 	}{
-		{name: "NoColon", entry: "GITHUB_TOKEN"},
-		{name: "InvalidName", entry: "1TOKEN:op://a/b/c"},
-		{name: "EmptyName", entry: ":op://a/b/c"},
-		{name: "NotOPRef", entry: "TOKEN:https://example.com"},
+		{name: "InvalidName", envName: "1TOKEN", ref: "op://a/b/c", want: `name "1TOKEN" isn't a valid environment variable name`},
+		{name: "NameWithEquals", envName: "A=B", ref: "op://a/b/c", want: `name "A=B" isn't a valid environment variable name`},
+		{name: "NotOPRef", envName: "TOKEN", ref: "https://example.com", want: `ref "https://example.com" for TOKEN must be an op:// ref`},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := extraSecrets([]string{tt.entry})
-			assert.ErrorContains(t, err, "must be NAME:op://ref")
+			_, err := extraSecrets(map[string]string{tt.envName: tt.ref})
+			assert.ErrorContains(t, err, tt.want)
 		})
 	}
 }

@@ -2,6 +2,8 @@ package sandbox
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"go.rgst.io/jaredallard/cmdexec/v2"
@@ -55,4 +57,19 @@ func TestProjectRootOutsideRepository(t *testing.T) {
 	}))
 
 	assert.Equal(t, projectRoot(t.Context(), "/dir"), "/dir")
+}
+
+// TestCheckLegacyConfig verifies that an old KEY=value configuration
+// file is refused with the file to convert it to, so its options don't
+// silently stop applying, and that its absence is fine.
+func TestCheckLegacyConfig(t *testing.T) {
+	dir := t.TempDir()
+	legacy := filepath.Join(dir, ".asbx")
+	path := filepath.Join(dir, projectConfigFile)
+
+	assert.NilError(t, checkLegacyConfig(legacy, path))
+
+	assert.NilError(t, os.WriteFile(legacy, []byte("NETWORK_HOST=true\n"), 0o600))
+	err := checkLegacyConfig(legacy, path)
+	assert.ErrorContains(t, err, legacy+`" uses the old KEY=value format, which is no longer read, convert it to "`+path)
 }

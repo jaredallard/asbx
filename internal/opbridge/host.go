@@ -47,7 +47,7 @@ type ReadFunc func(ctx context.Context, ref string) (string, error)
 // allow allows it.
 func answer(ctx context.Context, req *Request, allow *Allowlist, read ReadFunc) Response {
 	if !allow.Allows(req.Ref) {
-		return Response{Error: fmt.Sprintf("%q isn't in OP_ALLOWED_SECRET_REFS", req.Ref)}
+		return Response{Error: fmt.Sprintf("%q isn't in op_allowed_secret_refs", req.Ref)}
 	}
 
 	value, err := read(ctx, req.Ref)

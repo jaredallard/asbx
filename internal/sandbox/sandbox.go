@@ -144,7 +144,7 @@ func opBridge(run *docker.Run, entries []string) error {
 	}
 
 	if _, err := cmdexec.LookPath("op"); err != nil {
-		return errors.New("OP_ALLOWED_SECRET_REFS is set but op isn't installed on this host, install the 1Password CLI")
+		return errors.New("op_allowed_secret_refs is set but op isn't installed on this host, install the 1Password CLI")
 	}
 
 	run.Env(opbridge.SocketEnv + "=" + opbridge.Socket)
@@ -155,7 +155,7 @@ func opBridge(run *docker.Run, entries []string) error {
 // protectRepository mounts the files in the working directory that
 // could result in execution on the host read-only.
 func protectRepository(host *Host, run *docker.Run) error {
-	paths := []string{".asbx"}
+	paths := []string{projectConfigFile}
 
 	// A symlinked .git isn't followed, so the agent can't point it
 	// somewhere for us to create hooks in.

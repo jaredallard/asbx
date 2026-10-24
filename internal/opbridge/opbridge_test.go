@@ -85,7 +85,7 @@ func TestServe(t *testing.T) {
 
 	assert.DeepEqual(t, got, []Response{
 		{Value: "hunter2"},
-		{Error: `"op://Private/bank/password" isn't in OP_ALLOWED_SECRET_REFS`},
+		{Error: `"op://Private/bank/password" isn't in op_allowed_secret_refs`},
 		{Error: "item not found"},
 	})
 	assert.DeepEqual(t, op.refs, []string{"op://Dev/github/token", "op://Dev/missing/token"})
@@ -138,7 +138,7 @@ func TestBridgeRead(t *testing.T) {
 	assert.Equal(t, got, "hunter2")
 
 	_, err = Read(t.Context(), socket, "op://Dev/github/other")
-	assert.ErrorContains(t, err, "isn't in OP_ALLOWED_SECRET_REFS")
+	assert.ErrorContains(t, err, "isn't in op_allowed_secret_refs")
 
 	// The host going away stops the bridge.
 	toContainer.Close()

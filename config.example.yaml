@@ -1,0 +1,52 @@
+# This file can also be used as a project's .asbx.yaml, at its git root.
+
+# forgejo_enabled when set to true enables passing through forgejo
+# authentication via `FORGEJO_TOKEN`. It also mirrors in the host
+# configuration found at `~/Library/Application Support/fj/config.json`.
+forgejo_enabled: true
+
+# op_allowed_secret_refs are the 1Password `op://` refs that `op read`
+# and `op run` inside the container may read through the host's `op`,
+# which must be installed. `*` matches anything within one path segment,
+# `**` any number of them. For example:
+#
+# op_allowed_secret_refs:
+#   - op://Dev/github/token
+#   - op://Dev/aws/*
+#   - op://Agent/**
+op_allowed_secret_refs: []
+
+# extra_secret_env_vars maps environment variable names to 1Password
+# `op://` refs. Each secret is passed into the container as its
+# environment variable, where the agent can read it. For example:
+#
+# extra_secret_env_vars:
+#   GITHUB_TOKEN: op://Private/github/credential
+extra_secret_env_vars: {}
+
+# network_host when set to true runs the container on the host's
+# network, so it can reach every service listening on localhost. When
+# unset, host services are only reachable via `host.docker.internal`.
+network_host: false
+
+# extra_mounts are paths to forward in (ro) to the container.
+extra_mounts: []
+
+claude:
+  # oauth_token_secret_ref is the 1Password `op://` URL ref to retrieve
+  # your claude code oauth token secret from. If empty, it is not
+  # passed.
+  oauth_token_secret_ref: op://Private/claude-token/credential
+
+  # litellm_token_secret_ref when set sets "LITELLM_API_KEY" for usage in
+  # managed settings for passing through Anthropic API calls -> LiteLLM.
+  litellm_token_secret_ref: ""
+
+  # mirror_managed_settings when set to true enables mirroring your
+  # managed-settings.json into the container. You may want to set
+  # extra_mounts with this enabled.
+  mirror_managed_settings: true
+
+  # mirror_projects mirrors the host's project sessions+memory if
+  # enabled. This is mounted RW.
+  mirror_projects: true

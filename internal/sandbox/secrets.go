@@ -20,7 +20,9 @@ package sandbox
 import (
 	"context"
 	"fmt"
+	"maps"
 	"regexp"
+	"slices"
 	"strings"
 
 	"git.rgst.io/jaredallard/asbx/internal/docker"
@@ -67,19 +69,24 @@ func AddSecrets(ctx context.Context, run *docker.Run, secrets ...Secret) error {
 // envNamePattern matches valid environment variable names.
 var envNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-// extraSecrets returns the secrets for EXTRA_SECRET_ENV_VARS entries,
-// which are NAME:op://ref. The ref has a colon of its own, so only the
-// first one separates the name.
-func extraSecrets(entries []string) ([]Secret, error) {
+// extraSecrets returns the secrets for extra_secret_env_vars, which
+// maps environment variable names to op:// refs. They're sorted by
+// name, so the container is always started the same way. Names with
+// an empty ref are skipped.
+func extraSecrets(refs map[string]string) ([]Secret, error) {
 	var secrets []Secret
-	for _, entry := range entries {
-		if entry == "" {
+	for _, name := range slices.Sorted(maps.Keys(refs)) {
+		ref := refs[name]
+		if ref == "" {
 			continue
 		}
 
-		name, ref, ok := strings.Cut(entry, ":")
-		if !ok || !envNamePattern.MatchString(name) || !strings.HasPrefix(ref, "op://") {
-			return nil, fmt.Errorf("EXTRA_SECRET_ENV_VARS entry %q must be NAME:op://ref", entry)
+		if !envNamePattern.MatchString(name) {
+			return nil, fmt.Errorf("extra_secret_env_vars name %q isn't a valid environment variable name", name)
+		}
+
+		if !strings.HasPrefix(ref, "op://") {
+			return nil, fmt.Errorf("extra_secret_env_vars ref %q for %s must be an op:// ref", ref, name)
 		}
 
 		secrets = append(secrets, Secret{
