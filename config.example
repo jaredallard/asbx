@@ -1,3 +1,5 @@
+# This file can also be used as a project's .asbx, at its git root.
+
 # FORGEJO_ENABLED when set to true enables passing through forgejo
 # authentication via `FORGEJO_TOKEN`. It also mirrors in the host
 # configuration found at `~/Library/Application Support/fj/config.json`.

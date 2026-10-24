@@ -6,13 +6,83 @@ set -euo pipefail
 # DOCKER_IMAGE is the image we run claude inside.
 DOCKER_IMAGE="git.rgst.io/jaredallard/asbx:latest"
 
+# config_keys are the options a config file can set.
+config_keys=(
+	FORGEJO_ENABLED
+	CLAUDE_CODE_OAUTH_TOKEN_SECRET_REF
+	LITELLM_TOKEN_SECRET_REF
+	OP_SERVICE_ACCOUNT_TOKEN_SECRET_REF
+	CLAUDE_MIRROR_MANAGED_SETTINGS
+	CLAUDE_MIRROR_PROJECTS
+	NETWORK_HOST
+	EXTRA_MOUNTS
+	EXTRA_SECRET_ENV_VARS
+)
+
+# read_config sets the options in the config file at path, if it exists. It's
+# parsed rather than sourced, so it can't run code: every line is a comment or
+# KEY=value, and values are literal, optionally wrapped in quotes.
+#
+# Usage: read_config <path>
+read_config() {
+	local path="$1"
+	[[ -f "$path" ]] || return 0
+
+	local double_quoted='^"([^"]*)"$'
+	local single_quoted="^'([^']*)'\$"
+	local unquoted='^[^[:space:]"'\'']*$'
+
+	local line key value n=0
+	while IFS= read -r line || [[ -n "$line" ]]; do
+		n=$((n + 1))
+		line="${line#"${line%%[![:space:]]*}"}"
+		line="${line%"${line##*[![:space:]]}"}"
+		[[ -z "$line" ]] || [[ "$line" == "#"* ]] && continue
+
+		if [[ ! "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
+			echo "Error: $path:$n: expected KEY=value" >&2
+			exit 1
+		fi
+		key="${BASH_REMATCH[1]}"
+		value="${BASH_REMATCH[2]}"
+
+		if [[ " ${config_keys[*]} " != *" $key "* ]]; then
+			echo "Error: $path:$n: unknown option $key" >&2
+			exit 1
+		fi
+
+		if [[ "$value" =~ $double_quoted ]] || [[ "$value" =~ $single_quoted ]]; then
+			value="${BASH_REMATCH[1]}"
+		elif [[ ! "$value" =~ $unquoted ]]; then
+			echo "Error: $path:$n: $key must be quoted when it has whitespace or quotes" >&2
+			exit 1
+		fi
+
+		printf -v "$key" '%s' "$value"
+	done <"$path"
+}
+
 # config is the asbx configuration, see config.example for the options.
 # Every option is off when it isn't set.
 config="$HOME/.config/asbx/config"
-if [[ -f "$config" ]]; then
-	# shellcheck source=/dev/null
-	source "$config"
+read_config "$config"
+
+# The agent can write anything under the working directory, so refuse ones
+# that would give it the host's home directory or its config.
+work_dir=$(pwd -P)
+real_home=$(cd "$HOME" && pwd -P)
+if [[ "$work_dir" == / ]] || [[ "$real_home/" == "$work_dir"/* ]] || [[ "$work_dir" == "$real_home"/.* ]]; then
+	echo "Error: refusing to run in $PWD, it would give the agent write access to your home directory or its config" >&2
+	exit 1
 fi
+
+# project_config is the repo's own asbx configuration, at the root of the
+# git repository (or the working directory outside of one). It's read after
+# the user's config so it overrides it. The repo can't run code through it,
+# but it can turn options on, see Security in the README.
+project_root=$(git -C "$work_dir" rev-parse --show-toplevel 2>/dev/null || echo "$work_dir")
+project_config="$project_root/.asbx"
+read_config "$project_config"
 
 FORGEJO_ENABLED="${FORGEJO_ENABLED:-false}"
 CLAUDE_CODE_OAUTH_TOKEN_SECRET_REF="${CLAUDE_CODE_OAUTH_TOKEN_SECRET_REF:-}"
@@ -23,15 +93,6 @@ CLAUDE_MIRROR_PROJECTS="${CLAUDE_MIRROR_PROJECTS:-false}"
 NETWORK_HOST="${NETWORK_HOST:-false}"
 EXTRA_MOUNTS="${EXTRA_MOUNTS:-}"
 EXTRA_SECRET_ENV_VARS="${EXTRA_SECRET_ENV_VARS:-}"
-
-# The agent can write anything under the working directory, so refuse ones
-# that would give it the host's home directory or its config.
-work_dir=$(pwd -P)
-real_home=$(cd "$HOME" && pwd -P)
-if [[ "$work_dir" == / ]] || [[ "$real_home/" == "$work_dir"/* ]] || [[ "$work_dir" == "$real_home"/.* ]]; then
-	echo "Error: refusing to run in $PWD, it would give the agent write access to your home directory or its config" >&2
-	exit 1
-fi
 
 # op_secret prints the 1Password secret at ref, or says how to create it and
 # fails when it's missing or empty.
@@ -197,7 +258,7 @@ shopt -u dotglob nullglob
 
 # Block a few well-known paths that could result in execution on the
 # host.
-host_exec_paths=(.claude/settings.json .claude/settings.local.json .mcp.json)
+host_exec_paths=(.asbx .claude/settings.json .claude/settings.local.json .mcp.json)
 if [[ -d .git ]] && [[ ! -L .git ]]; then
 	mkdir -p .git/hooks
 	host_exec_paths+=(.git/config .git/hooks)

@@ -38,7 +38,7 @@ Or add it to your mise config:
 ## Configuration
 
 asbx reads `~/.config/asbx/config` for configuration values. Note that
-it is sourced.
+it is NOT sourced, so shell expansion is not supported.
 
 To get started, copy [config.example](config.example):
 
@@ -46,6 +46,12 @@ To get started, copy [config.example](config.example):
 mkdir -p ~/.config/asbx
 cp config.example ~/.config/asbx/config
 ```
+
+Repositories can also have their own `.asbx` file at its git root (or
+the working directory outside of a git repo). It takes the same options,
+is read after `~/.config/asbx/config` so it overrides it, and is
+mounted read-only into the container. See [Security](#security) before
+running asbx in a repo you don't trust.
 
 * `FORGEJO_ENABLED`: `true` passes `FORGEJO_TOKEN` (from `fj auth token`)
   and your host's fj config (without its token) into the container.
@@ -115,6 +121,12 @@ What it doesn't protect against:
   is readable by the agent. Mitigate this with scoped credentials. The
   agent can read everything the 1Password service account can, so keep
   its vaults minimal.
+* **Project config**: a repo's `.asbx` is parsed rather than run, but
+  it can still enable host networking, extra mounts or secrets, so check
+  it before running asbx in a repo you don't trust. An existing
+  `.asbx` is mounted read-only, but the agent can create one (or a nested
+  `.git` with its own `.asbx`) when there isn't one, and it applies on
+  the next run.
 * **`CLAUDE_MIRROR_PROJECTS`**: when enabled, sessions and memory
   written in the container are read by Claude on the host, so they can
   carry prompt injection.
