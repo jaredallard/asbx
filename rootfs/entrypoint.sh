@@ -31,4 +31,6 @@ if [[ -e ".mise.toml" ]] || [ -e "mise.toml" ]; then
 	mise install "${install_args[@]}"
 fi
 
-exec mise exec claude -- claude "$@"
+# Every tool in the image's and the project's mise config goes on PATH, not
+# just claude, so hooks and the agent can run them (e.g., rtk).
+exec mise exec -- claude "$@"

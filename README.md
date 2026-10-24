@@ -20,6 +20,21 @@ your local machine.
 * `op` (1Password CLI) works in the container through a service
   account, if configured.
 
+## Installation
+
+Install the latest release via [mise](https://mise.jdx.dev):
+
+```bash
+mise use -g 'forgejo:jaredallard/asbx[api_url=https://git.rgst.io/api/v1,asset_pattern=asbx]'
+```
+
+Or add it to your mise config:
+
+```toml
+[tools]
+"forgejo:jaredallard/asbx" = { version = "latest", api_url = "https://git.rgst.io/api/v1", asset_pattern = "asbx" }
+```
+
 ## Configuration
 
 asbx reads `~/.config/asbx/config` for configuration values. Note that
