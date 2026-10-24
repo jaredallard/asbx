@@ -381,6 +381,11 @@ func Build(ctx context.Context, host *Host, agent Agent) (*docker.Run, error) {
 	// so paths, and agents' per-directory state, match the host's.
 	run.Volume(host.PWD + ":" + host.PWD)
 	run.Arg("--workdir", host.PWD)
+
+	// NewHost had the user trust the working directory, so the agent
+	// doesn't need to ask, and its own record of the answer wouldn't
+	// outlive the container. It's the path the agent sees.
+	run.Env("ASBX_TRUSTED_DIR=" + host.PWD)
 	run.Arg(
 		"--cap-drop", "ALL",
 		"--cap-add", "CHOWN",

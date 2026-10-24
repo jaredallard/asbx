@@ -16,9 +16,10 @@
 // SPDX-License-Identifier: GPL-3.0
 
 // Package trust has the user review a configuration file before asbx
-// uses it, and remembers what they trusted, so they're only asked again
-// when it changes. A new file is shown in full, a changed one as a diff
-// against what was trusted.
+// uses it, or trust a directory before asbx runs an agent in it, and
+// remembers what they trusted, so they're only asked again when it
+// changes. A new file is shown in full, a changed one as a diff against
+// what was trusted.
 package trust
 
 import (
@@ -35,8 +36,9 @@ import (
 	"strings"
 )
 
-// ErrNotTrusted is returned when a file isn't trusted by the user.
-var ErrNotTrusted = errors.New("configuration not trusted")
+// ErrNotTrusted is returned when a file or directory isn't trusted by
+// the user.
+var ErrNotTrusted = errors.New("not trusted")
 
 // Terminal is where the user is asked to trust a file.
 type Terminal struct {
@@ -73,10 +75,10 @@ func (s Store) copyPath(path string) string {
 	return filepath.Join(s.Dir, hex.EncodeToString(sum[:])+".yaml")
 }
 
-// confirm asks the user at term whether to trust what was shown to
-// them. Only "y" or "yes" trusts it.
-func confirm(term Terminal) (bool, error) {
-	if _, err := fmt.Fprint(term.Out, "Trust this configuration? [y/N] "); err != nil {
+// confirm asks the user at term question, about whether to trust what
+// was shown to them. Only "y" or "yes" trusts it.
+func confirm(term Terminal, question string) (bool, error) {
+	if _, err := fmt.Fprint(term.Out, question+" [y/N] "); err != nil {
 		return false, err
 	}
 
@@ -138,7 +140,7 @@ func (s Store) Verify(path string, data []byte, term Terminal) error {
 		return err
 	}
 
-	ok, err := confirm(term)
+	ok, err := confirm(term, "Trust this configuration?")
 	if err != nil {
 		return err
 	}
@@ -152,4 +154,60 @@ func (s Store) Verify(path string, data []byte, term Terminal) error {
 	}
 
 	return os.WriteFile(copyPath, data, 0o600)
+}
+
+// DirStore is where the directories the user trusted are recorded.
+// Unlike a file, a directory has nothing to compare, so once it's
+// trusted the user isn't asked about it again. Removing its record
+// revokes its trust.
+type DirStore struct {
+	// Dir is the directory the records are kept in.
+	Dir string
+}
+
+// recordPath returns where the record of the directory at path is
+// kept. The record contains path, so the user can tell which to remove.
+func (s DirStore) recordPath(path string) string {
+	sum := sha256.Sum256([]byte(path))
+	return filepath.Join(s.Dir, hex.EncodeToString(sum[:]))
+}
+
+// Verify returns nil if the user has trusted the directory at path,
+// which should be absolute. Otherwise they're asked to trust it at term,
+// and if they do it's recorded as trusted. If they don't, or term isn't
+// interactive, an error wrapping ErrNotTrusted is returned.
+func (s DirStore) Verify(path string, term Terminal) error {
+	recordPath := s.recordPath(path)
+
+	_, err := os.Stat(recordPath)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+
+	if !term.Interactive {
+		return fmt.Errorf("%w: %s hasn't been trusted, run asbx in a terminal to trust it", ErrNotTrusted, path)
+	}
+
+	why := "The agent reads its files and may run code from them, such as hooks and MCP servers, inside the sandbox."
+	if _, err := fmt.Fprintf(term.Out, "%s hasn't been trusted. %s\n", Escape(path), why); err != nil {
+		return err
+	}
+
+	ok, err := confirm(term, "Trust this directory?")
+	if err != nil {
+		return err
+	}
+
+	if !ok {
+		return fmt.Errorf("%w: %s", ErrNotTrusted, path)
+	}
+
+	if err := os.MkdirAll(s.Dir, 0o750); err != nil {
+		return err
+	}
+
+	return os.WriteFile(recordPath, []byte(path+"\n"), 0o600)
 }

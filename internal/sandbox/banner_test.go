@@ -18,6 +18,7 @@
 package sandbox
 
 import (
+	"runtime"
 	"strings"
 	"testing"
 
@@ -124,11 +125,32 @@ func TestNewBanner(t *testing.T) {
 		version: version(),
 		agent:   "fake",
 		workDir: "~/src/repo",
-		network: "host",
+		network: networkMode(true, runtime.GOOS),
 		secrets: []string{"GH_TOKEN"},
 		extras:  []string{"podman", "op bridge (1 ref)", "2 mounts"},
 		notices: []notice{{warn: true, msg: "no ssh-agent"}},
 	}, cmp.AllowUnexported(banner{}, notice{}))
+}
+
+// TestNetworkMode verifies that the network mode is the one configured,
+// noted as being in a VM where Docker runs in one.
+func TestNetworkMode(t *testing.T) {
+	tests := []struct {
+		goos        string
+		hostNetwork bool
+		want        string
+	}{
+		{goos: "linux", want: "bridge"},
+		{goos: "linux", hostNetwork: true, want: "host"},
+		{goos: "darwin", want: "bridge (VM)"},
+		{goos: "darwin", hostNetwork: true, want: "host (VM)"},
+		{goos: "windows", want: "bridge (VM)"},
+		{goos: "windows", hostNetwork: true, want: "host (VM)"},
+	}
+
+	for _, tt := range tests {
+		assert.Equal(t, networkMode(tt.hostNetwork, tt.goos), tt.want, "networkMode(%v, %q)", tt.hostNetwork, tt.goos)
+	}
 }
 
 // TestVersion verifies that releases report their tag and other builds

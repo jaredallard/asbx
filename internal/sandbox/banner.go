@@ -19,6 +19,7 @@ package sandbox
 
 import (
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -56,6 +57,23 @@ func paint(color bool, code, s string) string {
 	}
 
 	return code + s + ansiReset
+}
+
+// networkMode returns the container's network mode, noting when Docker
+// on goos runs it in a VM, where the host network is the VM's, not the
+// user's machine's.
+func networkMode(hostNetwork bool, goos string) string {
+	mode := "bridge"
+	if hostNetwork {
+		mode = "host"
+	}
+
+	switch goos {
+	case "darwin", "windows":
+		mode += " (VM)"
+	}
+
+	return mode
 }
 
 // count returns n followed by noun, made plural when n isn't 1.
@@ -139,11 +157,6 @@ func newBanner(host *Host, agent Agent, run *docker.Run, allow *opbridge.Allowli
 		workDir = "~/" + rest
 	}
 
-	network := "bridge"
-	if cfg.NetworkHost {
-		network = "host"
-	}
-
 	var extras []string
 	if cfg.PodmanEnabled {
 		extras = append(extras, "podman")
@@ -168,7 +181,7 @@ func newBanner(host *Host, agent Agent, run *docker.Run, allow *opbridge.Allowli
 		version: version(),
 		agent:   agent.Name(),
 		workDir: workDir,
-		network: network,
+		network: networkMode(cfg.NetworkHost, runtime.GOOS),
 		secrets: run.SecretNames(),
 		extras:  extras,
 		notices: host.notices,

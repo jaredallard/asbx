@@ -278,6 +278,18 @@ func TestGitHubNotLoggedIn(t *testing.T) {
 	assert.Equal(t, len(run.Args()), 0)
 }
 
+// TestBuildTrustedDir verifies that the agent is told the working
+// directory, as it sees it, is trusted.
+func TestBuildTrustedDir(t *testing.T) {
+	host := newTestHost(t)
+
+	run, err := Build(t.Context(), host, &fakeAgent{})
+	assert.NilError(t, err)
+
+	want := "ASBX_TRUSTED_DIR=" + host.PWD
+	assert.Assert(t, slices.Contains(run.Args(), want), "Build() args = %q, want %q", run.Args(), want)
+}
+
 // TestBuildPodman verifies that Podman's seccomp profile, device and
 // storage are only added when it's enabled, and that Docker's /proc
 // masks are never turned off for it.

@@ -73,6 +73,13 @@ isn't running in a terminal. Trusted files are kept in
 `~/.config/asbx/trusted-configs/`; delete that directory, or a file in
 it, to be asked again.
 
+The first time asbx runs in a directory, it asks you to trust it, then
+tells the agent it's trusted, so the agent doesn't ask on every run (its
+own answer wouldn't outlive the container). asbx stops if you don't
+trust it, or if it can't ask because it isn't running in a terminal.
+Trusted directories are recorded in `~/.config/asbx/trusted-dirs/`, one
+file each containing its path; delete one to be asked again.
+
 > [!NOTE]
 > The old `KEY=value` files, `~/.config/asbx/config` and `.asbx`, are
 > no longer read. asbx refuses to run while one exists, convert it to
@@ -149,6 +156,8 @@ limitations:
   dot-directory in your home (e.g., `~/.config`).
 - Mounts some files read-only to the host (namely: git hooks and git
   config) to prevent automatic execution of commands on the host.
+- Asks you to trust a directory the first time it runs in it, before
+  the agent can read its files or run code from them.
 - Doesn't mount other projects' sessions, memory or prompt history from
   `~/.claude`.
 - If project memory is symlinked, it will be pinned when first read to

@@ -47,6 +47,10 @@ const (
 // project configuration files the user trusted are kept.
 const trustedConfigsDir = "trusted-configs"
 
+// trustedDirsDir is where, in the configuration directory, the working
+// directories the user trusted are recorded.
+const trustedDirsDir = "trusted-dirs"
+
 // Host is where asbx is running: the paths the sandbox is built from
 // and the configuration that applies to them.
 type Host struct {
@@ -196,11 +200,19 @@ func NewHost(ctx context.Context) (*Host, error) {
 		return nil, fmt.Errorf("refusing to run in %s, it would give the agent write access to your home directory or its config", pwd)
 	}
 
+	// The agent is told the working directory is trusted, so it doesn't
+	// ask on every run, which means asbx has to ask first. The resolved
+	// path is used so that repointing a symlink asks again.
+	configDir := filepath.Join(home, ".config", "asbx")
+	dirs := trust.DirStore{Dir: filepath.Join(configDir, trustedDirsDir)}
+	if err := dirs.Verify(workDir, terminal()); err != nil {
+		return nil, err
+	}
+
 	// The project's configuration is read after the user's so it
 	// overrides it. The repository can't run code through it, but it can
 	// turn options on, so it has to be trusted, see Security in the
 	// README.
-	configDir := filepath.Join(home, ".config", "asbx")
 	root := projectRoot(ctx, workDir)
 	userConfig := filepath.Join(configDir, userConfigFile)
 	projectConfig := filepath.Join(root, projectConfigFile)

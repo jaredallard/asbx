@@ -204,3 +204,95 @@ func TestVerifyKeyedByPath(t *testing.T) {
 	err := store.Verify("/other/.asbx.yaml", []byte("network_host: true\n"), term)
 	assert.Assert(t, errors.Is(err, ErrNotTrusted), "Verify() = %v, want ErrNotTrusted", err)
 }
+
+// dirPath is the directory being trusted in the tests.
+const dirPath = "/p"
+
+// TestVerifyDirTrusted verifies that a directory that was trusted is
+// accepted without asking the user.
+func TestVerifyDirTrusted(t *testing.T) {
+	store := DirStore{Dir: t.TempDir()}
+	if err := os.WriteFile(store.recordPath(dirPath), []byte(dirPath+"\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile(%q) = %v", store.recordPath(dirPath), err)
+	}
+
+	term, out := interactive("")
+	assert.NilError(t, store.Verify(dirPath, term))
+	assert.Equal(t, out.String(), "")
+}
+
+// TestVerifyDirNewTrusted verifies that a directory the user trusts is
+// recorded, with its path, so they aren't asked about it again.
+func TestVerifyDirNewTrusted(t *testing.T) {
+	for _, answer := range []string{"y\n", "yes\n", "Y\n", " YES \n", "y"} {
+		t.Run(strings.TrimSpace(answer), func(t *testing.T) {
+			store := DirStore{Dir: filepath.Join(t.TempDir(), "trusted")}
+
+			term, out := interactive(answer)
+			assert.NilError(t, store.Verify(dirPath, term))
+			assert.Assert(t, strings.HasPrefix(out.String(), dirPath+" hasn't been trusted."), "Verify() wrote:\n%s", out)
+			assert.Assert(t, strings.HasSuffix(out.String(), "Trust this directory? [y/N] "), "Verify() wrote:\n%s", out)
+
+			got, err := os.ReadFile(store.recordPath(dirPath))
+			assert.NilError(t, err)
+			assert.Equal(t, string(got), dirPath+"\n")
+
+			term, out = interactive("")
+			assert.NilError(t, store.Verify(dirPath, term))
+			assert.Equal(t, out.String(), "")
+		})
+	}
+}
+
+// TestVerifyDirDeclined verifies that a directory the user doesn't
+// trust is refused and not recorded.
+func TestVerifyDirDeclined(t *testing.T) {
+	tests := []struct {
+		name   string
+		answer string
+	}{
+		{name: "Empty", answer: "\n"},
+		{name: "No", answer: "n\n"},
+		{name: "EOF", answer: ""},
+		{name: "Other", answer: "yep\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := DirStore{Dir: t.TempDir()}
+
+			term, _ := interactive(tt.answer)
+			err := store.Verify(dirPath, term)
+			assert.Assert(t, errors.Is(err, ErrNotTrusted), "Verify() = %v, want ErrNotTrusted", err)
+
+			_, err = os.Stat(store.recordPath(dirPath))
+			assert.Assert(t, errors.Is(err, fs.ErrNotExist), "Stat() = %v, want fs.ErrNotExist", err)
+		})
+	}
+}
+
+// TestVerifyDirNotInteractive verifies that, without a user to ask, a
+// directory that wasn't trusted is refused without being recorded.
+func TestVerifyDirNotInteractive(t *testing.T) {
+	store := DirStore{Dir: t.TempDir()}
+
+	term, out := notInteractive()
+	err := store.Verify(dirPath, term)
+	assert.Assert(t, errors.Is(err, ErrNotTrusted), "Verify() = %v, want ErrNotTrusted", err)
+	assert.ErrorContains(t, err, dirPath+" hasn't been trusted, run asbx in a terminal to trust it")
+	assert.Equal(t, out.String(), "")
+
+	_, err = os.Stat(store.recordPath(dirPath))
+	assert.Assert(t, errors.Is(err, fs.ErrNotExist), "Stat() = %v, want fs.ErrNotExist", err)
+}
+
+// TestVerifyDirEscapesPath verifies that a directory's path is shown
+// with its escape sequences escaped, so it can't hide what it is.
+func TestVerifyDirEscapesPath(t *testing.T) {
+	store := DirStore{Dir: t.TempDir()}
+
+	term, out := interactive("n\n")
+	err := store.Verify("/p\x1b[2K", term)
+	assert.Assert(t, errors.Is(err, ErrNotTrusted), "Verify() = %v, want ErrNotTrusted", err)
+	assert.Assert(t, strings.HasPrefix(out.String(), `/p\x1b[2K hasn't been trusted.`), "Verify() wrote:\n%q", out)
+}

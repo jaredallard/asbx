@@ -14,7 +14,14 @@ for f in "$host_mnt/.claude"/*; do
 	cp -r "$f" "$HOME/.claude/"
 done
 shopt -u dotglob nullglob
-cp "$host_mnt/.claude.json" "$HOME/"
+
+if [[ -n ${ASBX_TRUSTED_DIR:-} ]]; then
+	jq --arg dir "$ASBX_TRUSTED_DIR" \
+		'.projects[$dir].hasTrustDialogAccepted = true' \
+		"$host_mnt/.claude.json" >"$HOME/.claude.json"
+else
+	cp "$host_mnt/.claude.json" "$HOME/"
+fi
 
 # Only mounted when Forgejo is enabled. The token comes from FORGEJO_TOKEN.
 if [[ -f "$host_mnt/fj-config.json" ]]; then
