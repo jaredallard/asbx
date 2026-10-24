@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"git.rgst.io/jaredallard/asbx/internal/config"
 	"go.rgst.io/jaredallard/cmdexec/v2"
 	"gotest.tools/v3/assert"
 )
@@ -72,4 +73,37 @@ func TestCheckLegacyConfig(t *testing.T) {
 	assert.NilError(t, os.WriteFile(legacy, []byte("NETWORK_HOST=true\n"), 0o600))
 	err := checkLegacyConfig(legacy, path)
 	assert.ErrorContains(t, err, legacy+`" uses the old KEY=value format, which is no longer read, convert it to "`+path)
+}
+
+// TestWriteDefaultConfig verifies that a user without a configuration
+// gets the example one, in a directory that's created for it.
+func TestWriteDefaultConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "asbx", userConfigFile)
+
+	wrote, err := writeDefaultConfig(path)
+	assert.NilError(t, err)
+	assert.Assert(t, wrote, "writeDefaultConfig(%q) = false, want true", path)
+
+	got, err := os.ReadFile(path)
+	assert.NilError(t, err)
+	assert.Equal(t, string(got), string(config.Example))
+
+	info, err := os.Stat(path)
+	assert.NilError(t, err)
+	assert.Equal(t, info.Mode().Perm(), os.FileMode(0o600))
+}
+
+// TestWriteDefaultConfigExists verifies that the user's configuration
+// is never overwritten.
+func TestWriteDefaultConfigExists(t *testing.T) {
+	path := filepath.Join(t.TempDir(), userConfigFile)
+	assert.NilError(t, os.WriteFile(path, []byte("network_host: true\n"), 0o600))
+
+	wrote, err := writeDefaultConfig(path)
+	assert.NilError(t, err)
+	assert.Assert(t, !wrote, "writeDefaultConfig(%q) = true, want false", path)
+
+	got, err := os.ReadFile(path)
+	assert.NilError(t, err)
+	assert.Equal(t, string(got), "network_host: true\n")
 }

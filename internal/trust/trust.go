@@ -23,44 +23,21 @@
 package trust
 
 import (
-	"bufio"
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
+
+	"git.rgst.io/jaredallard/asbx/internal/term"
 )
 
 // ErrNotTrusted is returned when a file or directory isn't trusted by
 // the user.
 var ErrNotTrusted = errors.New("not trusted")
-
-// Terminal is where the user is asked to trust a file.
-type Terminal struct {
-	// In is where the user's answer is read from.
-	In io.Reader
-
-	// Out is where the file and the question are written to.
-	Out io.Writer
-
-	// Interactive is whether there's a user at In and Out to ask. When
-	// there isn't, files that aren't trusted are refused.
-	Interactive bool
-
-	// Color is whether Out shows ANSI colors.
-	Color bool
-
-	// TrueColor is whether Out shows 24-bit colors, rather than only 256.
-	TrueColor bool
-
-	// Width is Out's width in columns, or 0 if it isn't known.
-	Width int
-}
 
 // Store is where the contents of trusted files are kept, as of when
 // they were trusted. Removing a file's copy from it revokes its trust.
@@ -75,36 +52,16 @@ func (s Store) copyPath(path string) string {
 	return filepath.Join(s.Dir, hex.EncodeToString(sum[:])+".yaml")
 }
 
-// confirm asks the user at term question, about whether to trust what
-// was shown to them. Only "y" or "yes" trusts it.
-func confirm(term Terminal, question string) (bool, error) {
-	if _, err := fmt.Fprint(term.Out, question+" [y/N] "); err != nil {
-		return false, err
-	}
-
-	answer, err := bufio.NewReader(term.In).ReadString('\n')
-	if err != nil && !errors.Is(err, io.EOF) {
-		return false, err
-	}
-
-	switch strings.ToLower(strings.TrimSpace(answer)) {
-	case "y", "yes":
-		return true, nil
-	default:
-		return false, nil
-	}
-}
-
 // Verify returns nil if data, the contents of the file at path, which
 // should be absolute, is what the user last trusted for it. Otherwise
-// it's shown to the user at term, in full if they haven't trusted the
-// file before or as a diff if it has changed, and they're asked to
-// trust it. If they do, data is stored as trusted. If they don't, or
-// term isn't interactive, an error wrapping ErrNotTrusted is returned.
+// it's shown to the user at t, in full if they haven't trusted the file
+// before or as a diff if it has changed, and they're asked to trust
+// it. If they do, data is stored as trusted. If they don't, or t isn't
+// interactive, an error wrapping ErrNotTrusted is returned.
 //
 // data must be what the caller goes on to use, rather than the file
 // being read again, so that it can't change after it's been trusted.
-func (s Store) Verify(path string, data []byte, term Terminal) error {
+func (s Store) Verify(path string, data []byte, t *term.Terminal) error {
 	copyPath := s.copyPath(path)
 
 	trusted, err := os.ReadFile(copyPath) //nolint:gosec // Why: copyPath is in the store's own directory.
@@ -122,25 +79,25 @@ func (s Store) Verify(path string, data []byte, term Terminal) error {
 		state = "new"
 	}
 
-	if !term.Interactive {
+	if !t.Interactive {
 		return fmt.Errorf("%w: %s is %s, run asbx in a terminal to review it", ErrNotTrusted, path, state)
 	}
 
 	var view string
 	if isNew {
-		view, err = renderNew(path, data, term)
+		view, err = renderNew(path, data, t)
 	} else {
-		view, err = renderChanged(path, trusted, data, term)
+		view, err = renderChanged(path, trusted, data, t)
 	}
 	if err != nil {
 		return err
 	}
 
-	if _, err := fmt.Fprintf(term.Out, "%s is %s, review it before it's used:\n%s", path, state, view); err != nil {
+	if _, err := fmt.Fprintf(t.Out, "%s is %s, review it before it's used:\n%s", path, state, view); err != nil {
 		return err
 	}
 
-	ok, err := confirm(term, "Trust this configuration?")
+	ok, err := t.Confirm("Trust this configuration?", "")
 	if err != nil {
 		return err
 	}
@@ -173,10 +130,10 @@ func (s DirStore) recordPath(path string) string {
 }
 
 // Verify returns nil if the user has trusted the directory at path,
-// which should be absolute. Otherwise they're asked to trust it at term,
-// and if they do it's recorded as trusted. If they don't, or term isn't
+// which should be absolute. Otherwise they're asked to trust it at t,
+// and if they do it's recorded as trusted. If they don't, or t isn't
 // interactive, an error wrapping ErrNotTrusted is returned.
-func (s DirStore) Verify(path string, term Terminal) error {
+func (s DirStore) Verify(path string, t *term.Terminal) error {
 	recordPath := s.recordPath(path)
 
 	_, err := os.Stat(recordPath)
@@ -187,16 +144,16 @@ func (s DirStore) Verify(path string, term Terminal) error {
 		return err
 	}
 
-	if !term.Interactive {
+	if !t.Interactive {
 		return fmt.Errorf("%w: %s hasn't been trusted, run asbx in a terminal to trust it", ErrNotTrusted, path)
 	}
 
 	why := "The agent reads its files and may run code from them, such as hooks and MCP servers, inside the sandbox."
-	if _, err := fmt.Fprintf(term.Out, "%s hasn't been trusted. %s\n", Escape(path), why); err != nil {
+	if _, err := fmt.Fprintf(t.Out, "%s hasn't been trusted. %s\n", term.Escape(path), why); err != nil {
 		return err
 	}
 
-	ok, err := confirm(term, "Trust this directory?")
+	ok, err := t.Confirm("Trust this directory?", "")
 	if err != nil {
 		return err
 	}

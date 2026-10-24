@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"git.rgst.io/jaredallard/asbx/internal/config"
 	"git.rgst.io/jaredallard/asbx/internal/docker"
 	"git.rgst.io/jaredallard/asbx/internal/sandbox"
 )
@@ -80,18 +81,9 @@ func (a *Agent) ProtectedPaths() []string {
 	return []string{".codex/config.toml", ".codex/rules"}
 }
 
-// Configure adds Codex's secrets and configuration to run.
-func (a *Agent) Configure(ctx context.Context, host *sandbox.Host, run *docker.Run) error {
+// Configure adds Codex's configuration to run.
+func (a *Agent) Configure(_ context.Context, host *sandbox.Host, run *docker.Run) error {
 	cfg := host.Config.Codex
-
-	if err := sandbox.AddSecrets(ctx, run, sandbox.Secret{
-		Env:  "OPENAI_API_KEY",
-		Ref:  cfg.APIKeySecretRef,
-		Name: "OpenAI API Key",
-		Help: "create one at https://platform.openai.com/api-keys",
-	}); err != nil {
-		return err
-	}
 
 	// The host's login isn't shared, since refreshing it in the container
 	// would log the host out.
@@ -102,6 +94,22 @@ func (a *Agent) Configure(ctx context.Context, host *sandbox.Host, run *docker.R
 	mountConfig(codexHome(host.Home), run)
 
 	return nil
+}
+
+// Secrets returns Codex's API key. The user is offered to create its
+// item when it's the default.
+func (a *Agent) Secrets(host *sandbox.Host) []sandbox.Secret {
+	ref := host.Config.Codex.APIKeySecretRef
+
+	return []sandbox.Secret{{
+		Env:  "OPENAI_API_KEY",
+		Ref:  ref,
+		Name: "OpenAI API Key",
+		Help: "create one at https://platform.openai.com/api-keys",
+		Instructions: "Create a secret key at " +
+			"https://platform.openai.com/api-keys.",
+		Create: ref == config.Default().Codex.APIKeySecretRef,
+	}}
 }
 
 // New returns a new instance of [Agent].

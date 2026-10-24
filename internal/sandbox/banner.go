@@ -23,20 +23,20 @@ import (
 	"strconv"
 	"strings"
 
+	"charm.land/lipgloss/v2"
 	"git.rgst.io/jaredallard/asbx/internal/docker"
 	"git.rgst.io/jaredallard/asbx/internal/opbridge"
-	"git.rgst.io/jaredallard/asbx/internal/trust"
+	"git.rgst.io/jaredallard/asbx/internal/term"
 )
 
-// The ANSI escape sequences the banner is drawn with. They're the
-// terminal's own colors, so the banner follows its theme.
-const (
-	ansiReset   = "\033[0m"
-	ansiBold    = "\033[1m"
-	ansiDim     = "\033[2m"
-	ansiGreen   = "\033[32m"
-	ansiYellow  = "\033[33m"
-	ansiMagenta = "\033[35m"
+// The styles the banner is drawn with. They're the terminal's own
+// colors, so the banner follows its theme.
+var (
+	logoStyle    = lipgloss.NewStyle().Foreground(lipgloss.Magenta)
+	nameStyle    = lipgloss.NewStyle().Bold(true)
+	dimStyle     = lipgloss.NewStyle().Faint(true)
+	statusStyle  = lipgloss.NewStyle().Foreground(lipgloss.Green)
+	warningStyle = lipgloss.NewStyle().Foreground(lipgloss.Yellow)
 )
 
 // The symbols the banner is drawn with.
@@ -44,20 +44,12 @@ const (
 	symbolLogo    = "🍱"
 	symbolDot     = "·"
 	symbolWarning = "⚠"
+	symbolStep    = "›"
 )
 
 // keyWidth is the width the banner's row keys are padded to, that of
 // the longest.
 const keyWidth = len("workdir")
-
-// paint returns s in the color code, when color is on.
-func paint(color bool, code, s string) string {
-	if !color {
-		return s
-	}
-
-	return code + s + ansiReset
-}
 
 // networkMode returns the container's network mode, noting when Docker
 // on goos runs it in a VM, where the host network is the VM's, not the
@@ -104,40 +96,40 @@ type banner struct {
 	notices []notice
 }
 
-// render returns the banner, in color when color is on. Rows with
-// nothing to show are left out.
-func (b *banner) render(color bool) string {
+// render returns the banner, styled, to be reduced to the terminal's
+// colors. Rows with nothing to show are left out.
+func (b *banner) render() string {
 	var s strings.Builder
 
 	fmt.Fprintf(&s, "  %s  %s   %s  %s  %s\n\n",
-		paint(color, ansiMagenta, symbolLogo),
-		paint(color, ansiBold, "asbx"),
-		paint(color, ansiDim, b.version),
-		paint(color, ansiDim, symbolDot),
-		paint(color, ansiGreen, "sandbox starting"),
+		logoStyle.Render(symbolLogo),
+		nameStyle.Render("asbx"),
+		dimStyle.Render(b.version),
+		dimStyle.Render(symbolDot),
+		statusStyle.Render("sandbox starting"),
 	)
 
 	rows := [][2]string{
 		{"agent", b.agent},
-		{"workdir", trust.Escape(b.workDir)},
+		{"workdir", term.Escape(b.workDir)},
 		{"network", b.network},
 		{"secrets", strings.Join(b.secrets, " ")},
-		{"extras", strings.Join(b.extras, paint(color, ansiDim, " "+symbolDot+" "))},
+		{"extras", strings.Join(b.extras, dimStyle.Render(" "+symbolDot+" "))},
 	}
 	for _, row := range rows {
 		if row[1] == "" {
 			continue
 		}
 
-		fmt.Fprintf(&s, "    %s  %s\n", paint(color, ansiDim, fmt.Sprintf("%-*s", keyWidth, row[0])), row[1])
+		fmt.Fprintf(&s, "    %s  %s\n", dimStyle.Render(fmt.Sprintf("%-*s", keyWidth, row[0])), row[1])
 	}
 
 	for _, n := range b.notices {
-		msg := trust.Escape(n.msg)
+		msg := term.Escape(n.msg)
 		if n.warn {
-			fmt.Fprintf(&s, "    %s\n", paint(color, ansiYellow, symbolWarning+" "+msg))
+			fmt.Fprintf(&s, "    %s\n", warningStyle.Render(symbolWarning+" "+msg))
 		} else {
-			fmt.Fprintf(&s, "    %s\n", paint(color, ansiDim, symbolDot+" "+msg))
+			fmt.Fprintf(&s, "    %s\n", dimStyle.Render(symbolDot+" "+msg))
 		}
 	}
 
@@ -148,8 +140,9 @@ func (b *banner) render(color bool) string {
 }
 
 // newBanner returns the banner for agent running in the sandbox for
-// host, with run and allow as built for it.
-func newBanner(host *Host, agent Agent, run *docker.Run, allow *opbridge.Allowlist) *banner {
+// host, with run and allow as built for it, and secrets to be read into
+// it.
+func newBanner(host *Host, agent Agent, run *docker.Run, allow *opbridge.Allowlist, secrets []Secret) *banner {
 	cfg := host.Config
 
 	workDir := host.PWD
@@ -177,24 +170,31 @@ func newBanner(host *Host, agent Agent, run *docker.Run, allow *opbridge.Allowli
 		extras = append(extras, count(mounts, "mount"))
 	}
 
+	names := run.SecretNames()
+	for _, secret := range secrets {
+		if secret.Ref != "" {
+			names = append(names, secret.Env)
+		}
+	}
+
 	return &banner{
 		version: version(),
 		agent:   agent.Name(),
 		workDir: workDir,
 		network: networkMode(cfg.NetworkHost, runtime.GOOS),
-		secrets: run.SecretNames(),
+		secrets: names,
 		extras:  extras,
 		notices: host.notices,
 	}
 }
 
-// announce shows the user the banner for agent running in the sandbox
-// for host, when asbx is running in a terminal. Otherwise only the
-// notices are shown, as plain lines, so they aren't lost.
-func announce(host *Host, agent Agent, run *docker.Run, allow *opbridge.Allowlist) {
-	term := terminal()
-	if term.Interactive {
-		fmt.Fprint(term.Out, newBanner(host, agent, run, allow).render(term.Color))
+// announce shows the user at t the banner for agent running in
+// the sandbox for host, as for [newBanner], when it's interactive.
+// Otherwise only the notices are shown, as plain lines, so they aren't
+// lost.
+func announce(t *term.Terminal, host *Host, agent Agent, run *docker.Run, allow *opbridge.Allowlist, secrets []Secret) {
+	if t.Interactive {
+		fmt.Fprint(t.Out, t.Render(newBanner(host, agent, run, allow, secrets).render()))
 		return
 	}
 
@@ -204,6 +204,39 @@ func announce(host *Host, agent Agent, run *docker.Run, allow *opbridge.Allowlis
 			kind = "Warning"
 		}
 
-		fmt.Fprintf(term.Out, "%s: %s\n", kind, trust.Escape(n.msg))
+		fmt.Fprintf(t.Out, "%s: %s\n", kind, term.Escape(n.msg))
 	}
+}
+
+// step shows the user at t what asbx is doing after the banner,
+// as msg, when it's interactive, like the banner. msg lines up with the
+// banner's name, since the logo before it is two columns wide.
+func step(t *term.Terminal, msg string) {
+	if !t.Interactive {
+		return
+	}
+
+	fmt.Fprint(t.Out, t.Render(fmt.Sprintf("  %s   %s\n", logoStyle.Render(symbolStep), term.Escape(msg))))
+}
+
+// starting shows the user at t that agent is starting, as the
+// last step, set apart from what docker and the agent show after.
+func starting(t *term.Terminal, agent string) {
+	step(t, "starting "+agent)
+
+	if t.Interactive {
+		fmt.Fprintln(t.Out)
+	}
+}
+
+// goodbye shows the user at t that the agent has exited, as a step set
+// apart from what docker and the agent showed before, unless it exited
+// with err, which is reported instead.
+func goodbye(t *term.Terminal, err error) {
+	if err != nil || !t.Interactive {
+		return
+	}
+
+	fmt.Fprintln(t.Out)
+	step(t, "goodbye!")
 }

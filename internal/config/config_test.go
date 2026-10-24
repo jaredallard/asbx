@@ -39,6 +39,15 @@ func configFiles(contents ...string) []File {
 	return files
 }
 
+// defaults returns [Default] changed by change, so that a case shows
+// only how it differs from the defaults.
+func defaults(change func(*Config)) Config {
+	cfg := Default()
+	change(&cfg)
+
+	return cfg
+}
+
 // TestReadFile verifies that a configuration file is read with the path
 // it was read from.
 func TestReadFile(t *testing.T) {
@@ -72,12 +81,12 @@ func TestLoad(t *testing.T) {
 		{
 			name:  "Empty",
 			files: []string{"", "# only a comment\n"},
-			want:  Config{Agent: "claude", ForgejoEnabled: true, GitHubEnabled: true},
+			want:  defaults(func(*Config) {}),
 		},
 		{
 			name:  "Comments",
 			files: []string{"# a comment\n\nnetwork_host: true # trailing\n"},
-			want:  Config{Agent: "claude", ForgejoEnabled: true, GitHubEnabled: true, NetworkHost: true},
+			want:  defaults(func(c *Config) { c.NetworkHost = true }),
 		},
 		{
 			name: "AllOptions",
@@ -125,12 +134,12 @@ codex:
 				"network_host: true\nforgejo_enabled: false\n",
 				"network_host: false\n",
 			},
-			want: Config{Agent: "claude", GitHubEnabled: true},
+			want: defaults(func(c *Config) { c.ForgejoEnabled = false }),
 		},
 		{
 			name:  "DefaultsTurnedOff",
 			files: []string{"forgejo_enabled: false\ngithub_enabled: false\n"},
-			want:  Config{Agent: "claude"},
+			want:  defaults(func(c *Config) { c.ForgejoEnabled, c.GitHubEnabled = false, false }),
 		},
 		{
 			name: "LaterNestedOptionOverrides",
@@ -138,17 +147,15 @@ codex:
 				"claude:\n  mirror_projects: true\n  oauth_token_secret_ref: op://a/b/c\n",
 				"claude:\n  oauth_token_secret_ref: op://d/e/f\n",
 			},
-			want: Config{
-				Agent:          "claude",
-				ForgejoEnabled: true,
-				GitHubEnabled:  true,
-				Claude:         Claude{MirrorProjects: true, OAuthTokenSecretRef: "op://d/e/f"},
-			},
+			want: defaults(func(c *Config) {
+				c.Claude.MirrorProjects = true
+				c.Claude.OAuthTokenSecretRef = "op://d/e/f"
+			}),
 		},
 		{
 			name:  "LaterAgentOverrides",
 			files: []string{"agent: claude\n", "agent: codex\n"},
-			want:  Config{Agent: "codex", ForgejoEnabled: true, GitHubEnabled: true},
+			want:  defaults(func(c *Config) { c.Agent = "codex" }),
 		},
 		{
 			name: "LaterListReplaces",
@@ -156,7 +163,7 @@ codex:
 				"extra_mounts: [/a, /b]\n",
 				"extra_mounts: [/c]\n",
 			},
-			want: Config{Agent: "claude", ForgejoEnabled: true, GitHubEnabled: true, ExtraMounts: []string{"/c"}},
+			want: defaults(func(c *Config) { c.ExtraMounts = []string{"/c"} }),
 		},
 		{
 			name: "SecretsMergeByName",
@@ -164,12 +171,9 @@ codex:
 				"extra_secret_env_vars:\n  A: op://a/a/a\n  B: op://b/b/b\n",
 				"extra_secret_env_vars:\n  B: ''\n  C: op://c/c/c\n",
 			},
-			want: Config{
-				Agent:              "claude",
-				ForgejoEnabled:     true,
-				GitHubEnabled:      true,
-				ExtraSecretEnvVars: map[string]string{"A": "op://a/a/a", "B": "", "C": "op://c/c/c"},
-			},
+			want: defaults(func(c *Config) {
+				c.ExtraSecretEnvVars = map[string]string{"A": "op://a/a/a", "B": "", "C": "op://c/c/c"}
+			}),
 		},
 		{
 			name: "EmptyValuesUnset",
@@ -177,7 +181,7 @@ codex:
 				"extra_mounts: [/a]\nextra_secret_env_vars: {A: op://a/a/a}\nclaude:\n  oauth_token_secret_ref: op://a/b/c\n",
 				"extra_mounts: null\nextra_secret_env_vars: ~\nclaude:\n  oauth_token_secret_ref: ''\n",
 			},
-			want: Config{Agent: "claude", ForgejoEnabled: true, GitHubEnabled: true},
+			want: defaults(func(c *Config) { c.Claude.OAuthTokenSecretRef = "" }),
 		},
 	}
 
@@ -195,7 +199,19 @@ codex:
 func TestLoadMissingFiles(t *testing.T) {
 	got, err := Load(File{Path: "missing.yaml"})
 	assert.NilError(t, err)
-	assert.DeepEqual(t, *got, Config{Agent: "claude", ForgejoEnabled: true, GitHubEnabled: true})
+	assert.DeepEqual(t, *got, Default())
+}
+
+// TestExampleRefs verifies that the example configuration's 1Password
+// refs are the defaults, which asbx offers to create, so the two can't
+// drift apart.
+func TestExampleRefs(t *testing.T) {
+	got, err := Load(File{Path: "config.example.yaml", Data: Example})
+	assert.NilError(t, err)
+
+	want := Default()
+	assert.Equal(t, got.Claude.OAuthTokenSecretRef, want.Claude.OAuthTokenSecretRef)
+	assert.Equal(t, got.Codex.APIKeySecretRef, want.Codex.APIKeySecretRef)
 }
 
 // TestLoadErrors verifies that malformed configuration is rejected

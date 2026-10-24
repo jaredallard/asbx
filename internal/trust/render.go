@@ -18,15 +18,14 @@
 package trust
 
 import (
+	"embed"
 	"fmt"
-	"strconv"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 
+	"charm.land/lipgloss/v2"
+	"git.rgst.io/jaredallard/asbx/internal/term"
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/formatters"
-	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/aymanbagabas/go-udiff"
 )
@@ -41,12 +40,12 @@ const (
 	gutterLine = "│" // │
 )
 
-// The ANSI escape sequences the frame is drawn with.
-const (
-	ansiReset = "\033[0m"
-	ansiGrey  = "\033[90m"
-	ansiRed   = "\033[31m"
-	ansiGreen = "\033[32m"
+// The styles the frame is drawn with. They're the terminal's own
+// colors, so the frame follows its theme.
+var (
+	frameStyle   = lipgloss.NewStyle().Foreground(lipgloss.BrightBlack)
+	removedStyle = lipgloss.NewStyle().Foreground(lipgloss.Red)
+	addedStyle   = lipgloss.NewStyle().Foreground(lipgloss.Green)
 )
 
 const (
@@ -63,66 +62,26 @@ const (
 	contextLines = 3
 )
 
-// Escape returns text with the characters that a terminal would act on
-// rather than show, such as escape sequences, carriage returns and
-// bidirectional overrides, replaced with Go escapes. Otherwise a file
-// could hide what it contains from the user reviewing it. Newlines and
-// tabs are kept.
-func Escape(text string) string {
-	var b strings.Builder
-	for i := 0; i < len(text); {
-		r, size := utf8.DecodeRuneInString(text[i:])
+// lexerFS holds chroma's YAML lexer. It's built in on its own, since
+// chroma's lexers package builds in those for every language, which we
+// don't need (increases the binary size a lot).
+//
+//go:embed embed/yaml.xml
+var lexerFS embed.FS
 
-		switch {
-		case r == utf8.RuneError && size == 1:
-			fmt.Fprintf(&b, `\x%02x`, text[i])
-		case r == '\n', r == '\t':
-			b.WriteRune(r)
-		case unicode.IsControl(r), unicode.Is(unicode.Cf, r):
-			quoted := strconv.QuoteRuneToASCII(r)
-			b.WriteString(quoted[1 : len(quoted)-1])
-		default:
-			b.WriteString(text[i : i+size])
-		}
-
-		i += size
-	}
-
-	return b.String()
-}
+// yamlLexer highlights YAML.
+var yamlLexer = chroma.MustNewXMLLexer(lexerFS, "embed/yaml.xml")
 
 // highlight returns the lines of text, without their newlines, syntax
-// highlighted as YAML when term has color.
-func highlight(text string, term Terminal) ([]string, error) {
-	if !term.Color {
-		lines := strings.SplitAfter(text, "\n")
-		for i, line := range lines {
-			lines[i] = strings.TrimSuffix(line, "\n")
-		}
-
-		// The empty string after the final newline isn't a line.
-		if lines[len(lines)-1] == "" {
-			lines = lines[:len(lines)-1]
-		}
-
-		return lines, nil
-	}
-
-	lexer := lexers.Get("yaml")
-	if lexer == nil {
-		lexer = lexers.Fallback
-	}
-
-	formatter := formatters.TTY256
-	if term.TrueColor {
-		formatter = formatters.TTY16m
-	}
-
+// highlighted as YAML in true color, to be reduced to the terminal's
+// colors when the frame is rendered.
+func highlight(text string) ([]string, error) {
+	formatter := formatters.TTY16m
 	style := styles.Get("monokai")
 
 	// The whole text is tokenised at once, rather than each line, so
 	// that values spanning lines are highlighted correctly.
-	it, err := lexer.Tokenise(nil, text)
+	it, err := yamlLexer.Tokenise(nil, text)
 	if err != nil {
 		return nil, err
 	}
@@ -146,18 +105,14 @@ func highlight(text string, term Terminal) ([]string, error) {
 // frame draws lines of a file the way bat does: in a box, with a header
 // naming the file and a gutter of line numbers.
 type frame struct {
-	b     strings.Builder
-	term  Terminal
-	width int
+	b        strings.Builder
+	terminal *term.Terminal
+	width    int
 }
 
-// paint returns s in color, when the terminal has it.
-func (f *frame) paint(color, s string) string {
-	if !f.term.Color {
-		return s
-	}
-
-	return color + s + ansiReset
+// String returns the frame drawn so far, in the terminal's colors.
+func (f *frame) String() string {
+	return f.terminal.Render(f.b.String())
 }
 
 // rule draws a horizontal line across the frame, meeting the gutter's
@@ -165,39 +120,39 @@ func (f *frame) paint(color, s string) string {
 func (f *frame) rule(join string) {
 	rest := max(f.width-gutterWidth-1, 0)
 	line := strings.Repeat(ruleLine, gutterWidth) + join + strings.Repeat(ruleLine, rest)
-	fmt.Fprintln(&f.b, f.paint(ansiGrey, line))
+	fmt.Fprintln(&f.b, frameStyle.Render(line))
 }
 
 // header draws the top of the frame, with title in it.
 func (f *frame) header(title string) {
 	f.rule(ruleTop)
-	fmt.Fprintf(&f.b, "%*s%s %s\n", gutterWidth, "", f.paint(ansiGrey, gutterLine), title)
+	fmt.Fprintf(&f.b, "%*s%s %s\n", gutterWidth, "", frameStyle.Render(gutterLine), title)
 	f.rule(ruleMiddle)
 }
 
 // line draws content as line number n, with marker, which is "+", "-"
 // or " ", in the gutter.
 func (f *frame) line(n int, marker, content string) {
-	number := f.paint(ansiGrey, fmt.Sprintf("%4d", n))
+	number := frameStyle.Render(fmt.Sprintf("%4d", n))
 
 	switch marker {
 	case "+":
-		marker = f.paint(ansiGreen, marker)
+		marker = addedStyle.Render(marker)
 	case "-":
-		marker = f.paint(ansiRed, marker)
+		marker = removedStyle.Render(marker)
 	}
 
-	fmt.Fprintf(&f.b, "%s %s %s %s\n", number, marker, f.paint(ansiGrey, gutterLine), content)
+	fmt.Fprintf(&f.b, "%s %s %s %s\n", number, marker, frameStyle.Render(gutterLine), content)
 }
 
-// newFrame returns a frame as wide as term.
-func newFrame(term Terminal) *frame {
-	width := term.Width
+// newFrame returns a frame as wide as t.
+func newFrame(t *term.Terminal) *frame {
+	width := t.Width
 	if width <= 0 {
 		width = defaultWidth
 	}
 
-	return &frame{term: term, width: width}
+	return &frame{terminal: t, width: width}
 }
 
 // lineAt returns lines[i], or fallback, without its newline, if lines is
@@ -213,14 +168,14 @@ func lineAt(lines []string, i int, fallback string) string {
 
 // renderNew returns data, the contents of the file at path, drawn in
 // full, for a file that hasn't been trusted before.
-func renderNew(path string, data []byte, term Terminal) (string, error) {
-	lines, err := highlight(Escape(string(data)), term)
+func renderNew(path string, data []byte, t *term.Terminal) (string, error) {
+	lines, err := highlight(term.Escape(string(data)))
 	if err != nil {
 		return "", err
 	}
 
-	f := newFrame(term)
-	f.header("File: " + Escape(path) + " (new)")
+	f := newFrame(t)
+	f.header("File: " + term.Escape(path) + " (new)")
 
 	for i, line := range lines {
 		f.line(i+1, " ", line)
@@ -228,33 +183,33 @@ func renderNew(path string, data []byte, term Terminal) (string, error) {
 
 	f.rule(ruleBottom)
 
-	return f.b.String(), nil
+	return f.String(), nil
 }
 
 // renderChanged returns the changes from old, the contents of the file
 // at path when it was trusted, to data, its contents now. Each change is
 // shown with the lines around it, and is numbered by the line it's on
 // now, or was on if it was removed.
-func renderChanged(path string, old, data []byte, term Terminal) (string, error) {
-	before, after := Escape(string(old)), Escape(string(data))
+func renderChanged(path string, old, data []byte, t *term.Terminal) (string, error) {
+	before, after := term.Escape(string(old)), term.Escape(string(data))
 
 	diff, err := udiff.ToUnifiedDiff("", "", before, udiff.Lines(before, after), contextLines)
 	if err != nil {
 		return "", err
 	}
 
-	beforeLines, err := highlight(before, term)
+	beforeLines, err := highlight(before)
 	if err != nil {
 		return "", err
 	}
 
-	afterLines, err := highlight(after, term)
+	afterLines, err := highlight(after)
 	if err != nil {
 		return "", err
 	}
 
-	f := newFrame(term)
-	f.header("File: " + Escape(path) + " (changed)")
+	f := newFrame(t)
+	f.header("File: " + term.Escape(path) + " (changed)")
 
 	// Hunks give only their line in the old file. Lines are added and
 	// removed only within hunks, so the line in the new file is offset
@@ -286,5 +241,5 @@ func renderChanged(path string, old, data []byte, term Terminal) (string, error)
 
 	f.rule(ruleBottom)
 
-	return f.b.String(), nil
+	return f.String(), nil
 }

@@ -22,6 +22,9 @@ type fakeAgent struct {
 
 	// paths are its protected paths.
 	paths []string
+
+	// secrets are its secrets.
+	secrets []Secret
 }
 
 // Name returns "fake".
@@ -43,6 +46,11 @@ func (a *fakeAgent) Configure(_ context.Context, _ *Host, run *docker.Run) error
 	run.Arg("--fake-agent")
 
 	return nil
+}
+
+// Secrets returns a.secrets.
+func (a *fakeAgent) Secrets(*Host) []Secret {
+	return a.secrets
 }
 
 // mkfile creates path under dir, as a directory if isDir.

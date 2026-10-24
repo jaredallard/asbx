@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"git.rgst.io/jaredallard/asbx/internal/config"
 	"git.rgst.io/jaredallard/asbx/internal/docker"
 	"git.rgst.io/jaredallard/asbx/internal/sandbox"
 )
@@ -107,26 +108,9 @@ func (a *Agent) ProtectedPaths() []string {
 	return []string{".claude/settings.json", ".claude/settings.local.json", ".mcp.json"}
 }
 
-// Configure adds Claude Code's secrets and configuration to run.
-func (a *Agent) Configure(ctx context.Context, host *sandbox.Host, run *docker.Run) error {
+// Configure adds Claude Code's configuration to run.
+func (a *Agent) Configure(_ context.Context, host *sandbox.Host, run *docker.Run) error {
 	cfg := host.Config.Claude
-
-	if err := sandbox.AddSecrets(ctx, run,
-		sandbox.Secret{
-			Env:  "LITELLM_API_KEY",
-			Ref:  cfg.LiteLLMTokenSecretRef,
-			Name: "LiteLLM API Key",
-			Help: "create a virtual key at https://litellm.koi-insen.ts.net/ui/api-keys/",
-		},
-		sandbox.Secret{
-			Env:  "CLAUDE_CODE_OAUTH_TOKEN",
-			Ref:  cfg.OAuthTokenSecretRef,
-			Name: "Claude OAuth Token",
-			Help: "create a new token with 'claude setup-token'",
-		},
-	); err != nil {
-		return err
-	}
 
 	if cfg.MirrorManagedSettings {
 		path, err := managedSettingsPath(runtime.GOOS)
@@ -150,6 +134,30 @@ func (a *Agent) Configure(ctx context.Context, host *sandbox.Host, run *docker.R
 	}
 
 	return nil
+}
+
+// Secrets returns Claude Code's OAuth token and LiteLLM key. The user
+// is offered to create the token's item when it's the default.
+func (a *Agent) Secrets(host *sandbox.Host) []sandbox.Secret {
+	cfg := host.Config.Claude
+
+	return []sandbox.Secret{
+		{
+			Env:  "LITELLM_API_KEY",
+			Ref:  cfg.LiteLLMTokenSecretRef,
+			Name: "LiteLLM API Key",
+			Help: "create a virtual key at https://litellm.koi-insen.ts.net/ui/api-keys/",
+		},
+		{
+			Env:  "CLAUDE_CODE_OAUTH_TOKEN",
+			Ref:  cfg.OAuthTokenSecretRef,
+			Name: "Claude OAuth Token",
+			Help: "create a new token with 'claude setup-token'",
+			Instructions: "Run 'claude setup-token' in another terminal and " +
+				"sign in.",
+			Create: cfg.OAuthTokenSecretRef == config.Default().Claude.OAuthTokenSecretRef,
+		},
+	}
 }
 
 // New returns a new instance of [Agent].

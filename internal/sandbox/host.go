@@ -28,9 +28,9 @@ import (
 
 	"git.rgst.io/jaredallard/asbx/internal/config"
 	"git.rgst.io/jaredallard/asbx/internal/docker"
+	"git.rgst.io/jaredallard/asbx/internal/term"
 	"git.rgst.io/jaredallard/asbx/internal/trust"
 	"go.rgst.io/jaredallard/cmdexec/v2"
-	"golang.org/x/term"
 )
 
 // The configuration files, which are read in this order.
@@ -145,31 +145,32 @@ func checkLegacyConfig(legacy, path string) error {
 		return err
 	}
 
-	return fmt.Errorf("%q uses the old KEY=value format, which is no longer read, convert it to %q (see config.example.yaml)", legacy, path)
+	return fmt.Errorf("%q uses the old KEY=value format, which is no longer read, convert it to %q (see the README)",
+		legacy, path)
 }
 
-// terminal returns the terminal asbx is running in, for asking the user
-// to trust a configuration file. It's only interactive when both stdin
-// and stderr are terminals. Colors follow NO_COLOR and COLORTERM.
-func terminal() trust.Terminal {
-	interactive := term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stderr.Fd()))
+// writeDefaultConfig writes the example configuration to path, as the
+// user's configuration, if it doesn't exist. It reports whether it did.
+func writeDefaultConfig(path string) (bool, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return false, err
+	}
 
-	width, _, err := term.GetSize(int(os.Stderr.Fd()))
+	// O_EXCL, so a file created since asbx checked is never overwritten.
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // Why: path is the user's config file.
+	if errors.Is(err, fs.ErrExist) {
+		return false, nil
+	}
 	if err != nil {
-		// The frame falls back to a default width.
-		width = 0
+		return false, err
 	}
 
-	colorTerm := os.Getenv("COLORTERM")
-
-	return trust.Terminal{
-		In:          os.Stdin,
-		Out:         os.Stderr,
-		Interactive: interactive,
-		Color:       interactive && os.Getenv("NO_COLOR") == "",
-		TrueColor:   colorTerm == "truecolor" || colorTerm == "24bit",
-		Width:       width,
+	if _, err := f.Write(config.Example); err != nil {
+		f.Close() //nolint:errcheck,gosec // Why: the write error is the one that matters.
+		return false, err
 	}
+
+	return true, f.Close()
 }
 
 // NewHost resolves the host asbx is running on and reads its
@@ -204,8 +205,9 @@ func NewHost(ctx context.Context) (*Host, error) {
 	// ask on every run, which means asbx has to ask first. The resolved
 	// path is used so that repointing a symlink asks again.
 	configDir := filepath.Join(home, ".config", "asbx")
+	t := term.New()
 	dirs := trust.DirStore{Dir: filepath.Join(configDir, trustedDirsDir)}
-	if err := dirs.Verify(workDir, terminal()); err != nil {
+	if err := dirs.Verify(workDir, t); err != nil {
 		return nil, err
 	}
 
@@ -225,6 +227,17 @@ func NewHost(ctx context.Context) (*Host, error) {
 		return nil, err
 	}
 
+	// New users start from the example, which documents every option.
+	var notices []notice
+	wrote, err := writeDefaultConfig(userConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	if wrote {
+		notices = append(notices, notice{msg: "wrote the default configuration to ~/.config/asbx/" + userConfigFile})
+	}
+
 	userFile, err := config.ReadFile(userConfig)
 	if err != nil {
 		return nil, err
@@ -240,7 +253,7 @@ func NewHost(ctx context.Context) (*Host, error) {
 	// trust it first. The contents that were trusted are what's loaded.
 	if len(projectFile.Data) > 0 {
 		store := trust.Store{Dir: filepath.Join(configDir, trustedConfigsDir)}
-		if err := store.Verify(projectConfig, projectFile.Data, terminal()); err != nil {
+		if err := store.Verify(projectConfig, projectFile.Data, t); err != nil {
 			return nil, err
 		}
 	}
@@ -256,5 +269,6 @@ func NewHost(ctx context.Context) (*Host, error) {
 		WorkDir:   workDir,
 		ConfigDir: configDir,
 		Config:    cfg,
+		notices:   notices,
 	}, nil
 }

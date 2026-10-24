@@ -21,12 +21,14 @@ import (
 	"strings"
 	"testing"
 
+	"git.rgst.io/jaredallard/asbx/internal/term"
+	"github.com/charmbracelet/colorprofile"
 	"gotest.tools/v3/assert"
 )
 
 // plain is a terminal without color, 30 columns wide, so frames are easy
 // to compare.
-var plain = Terminal{Width: 30}
+var plain = &term.Terminal{Width: 30}
 
 // TestRenderNew verifies that a new file is drawn in full, numbered, in
 // a frame naming it.
@@ -129,15 +131,17 @@ func TestRenderEscapes(t *testing.T) {
 // TestRenderColor verifies that, with color, the file is syntax
 // highlighted and added and removed lines are marked in green and red.
 func TestRenderColor(t *testing.T) {
-	term := Terminal{Color: true, Width: 30}
+	terminal := &term.Terminal{Profile: colorprofile.ANSI256, Width: 30}
 
-	got, err := renderChanged("/p/.asbx.yaml", []byte("a: 1\n"), []byte("a: 2\n"), term)
+	got, err := renderChanged("/p/.asbx.yaml", []byte("a: 1\n"), []byte("a: 2\n"), terminal)
 	assert.NilError(t, err)
 
-	assert.Assert(t, strings.Contains(got, ansiRed+"-"+ansiReset), "renderChanged() =\n%q", got)
-	assert.Assert(t, strings.Contains(got, ansiGreen+"+"+ansiReset), "renderChanged() =\n%q", got)
+	assert.Assert(t, strings.Contains(got, removedStyle.Render("-")), "renderChanged() =\n%q", got)
+	assert.Assert(t, strings.Contains(got, addedStyle.Render("+")), "renderChanged() =\n%q", got)
 
-	// The key is highlighted, so it isn't next to the gutter as is.
-	assert.Assert(t, !strings.Contains(got, gutterLine+ansiReset+" a:"), "renderChanged() =\n%q", got)
+	// The key is highlighted, reduced to the terminal's 256 colors, so
+	// it isn't next to the gutter as is.
+	assert.Assert(t, !strings.Contains(got, frameStyle.Render(gutterLine)+" a:"), "renderChanged() =\n%q", got)
 	assert.Assert(t, strings.Contains(got, "\033[38;5;"), "renderChanged() =\n%q", got)
+	assert.Assert(t, !strings.Contains(got, "\033[38;2;"), "renderChanged() =\n%q", got)
 }

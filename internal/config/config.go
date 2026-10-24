@@ -16,11 +16,12 @@
 // SPDX-License-Identifier: GPL-3.0
 
 // Package config reads the asbx configuration files. See
-// config.example.yaml for the options.
+// embed/config.example.yaml for the options.
 package config
 
 import (
 	"bytes"
+	_ "embed"
 	"errors"
 	"fmt"
 	"io"
@@ -30,9 +31,14 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
+// Example is the example configuration, which documents every option.
+// It's written as the user's configuration when they don't have one.
+//
+//go:embed embed/config.example.yaml
+var Example []byte
+
 // Config is the asbx configuration. Every option is off when it isn't
-// set, except ForgejoEnabled and GitHubEnabled, which are on, and Agent,
-// which is "claude".
+// set, except those [Default] sets.
 type Config struct {
 	// Agent is the name of the agent asbx runs when it isn't given one,
 	// such as "claude" or "codex".
@@ -99,6 +105,22 @@ type Codex struct {
 	APIKeySecretRef string `yaml:"api_key_secret_ref"`
 }
 
+// Default returns the configuration before any file is read.
+func Default() Config {
+	// Passing through the host's logins is skipped when it isn't logged
+	// in, so it's safe to have on unless a file turns it off. Claude Code
+	// was the only agent before there was a choice.
+	return Config{
+		Agent:          "claude",
+		ForgejoEnabled: true,
+		GitHubEnabled:  true,
+		//nolint:gosec // Why: these are where the secrets are, not secrets.
+		Claude: Claude{OAuthTokenSecretRef: "op://Private/claude-token/credential"},
+		//nolint:gosec // Why: these are where the secrets are, not secrets.
+		Codex: Codex{APIKeySecretRef: "op://Private/codex-token/credential"},
+	}
+}
+
 // File is a configuration file's contents and the path they were read
 // from, which errors are reported against.
 type File struct {
@@ -135,8 +157,8 @@ func decode(file File, cfg *Config) error {
 	return nil
 }
 
-// Load decodes the configuration files, in order, so that later files
-// override earlier ones. Empty files, such as ones that don't exist, are
+// Load decodes the configuration files, in order, over [Default], so
+// that later files override earlier ones. Empty files, such as ones that don't exist, are
 // skipped.
 //
 // Each option a later file sets replaces the earlier value, including
@@ -144,10 +166,7 @@ func decode(file File, cfg *Config) error {
 // later file turns an option off by setting it to false, an empty
 // string or, for lists and extra_secret_env_vars, null.
 func Load(files ...File) (*Config, error) {
-	// Passing through the host's logins is skipped when it isn't logged
-	// in, so it's safe to have on unless a file turns it off. Claude Code
-	// was the only agent before there was a choice.
-	cfg := Config{Agent: "claude", ForgejoEnabled: true, GitHubEnabled: true}
+	cfg := Default()
 	for _, file := range files {
 		if err := decode(file, &cfg); err != nil {
 			return nil, err

@@ -50,7 +50,8 @@ extra_mounts: []
 claude:
   # oauth_token_secret_ref is the 1Password `op://` URL ref to retrieve
   # your claude code oauth token secret from. If empty, it is not
-  # passed.
+  # passed. When it's this default and the item doesn't exist, asbx
+  # offers to create it.
   oauth_token_secret_ref: op://Private/claude-token/credential
 
   # litellm_token_secret_ref when set sets "LITELLM_API_KEY" for usage in
@@ -70,5 +71,6 @@ codex:
   # api_key_secret_ref is the 1Password `op://` URL ref to retrieve your
   # OpenAI API key from. It's passed as `OPENAI_API_KEY`, and Codex is
   # logged in with it. If empty, Codex isn't logged in and you'll have to
-  # log in on every run.
+  # log in on every run. When it's this default and the item doesn't
+  # exist, asbx offers to create it.
   api_key_secret_ref: op://Private/codex-token/credential

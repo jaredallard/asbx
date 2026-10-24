@@ -39,6 +39,7 @@ import (
 
 	"git.rgst.io/jaredallard/asbx/internal/docker"
 	"git.rgst.io/jaredallard/asbx/internal/opbridge"
+	"git.rgst.io/jaredallard/asbx/internal/term"
 	"go.rgst.io/jaredallard/cmdexec/v2"
 )
 
@@ -108,9 +109,13 @@ type Agent interface {
 	// such as its project settings.
 	ProtectedPaths() []string
 
-	// Configure adds what the agent needs to run, such as its secrets,
+	// Configure adds what the agent needs to run, such as its
 	// configuration and protected paths, to run.
 	Configure(ctx context.Context, host *Host, run *docker.Run) error
+
+	// Secrets returns the secrets the agent needs for host, which are
+	// read from 1Password after the banner is shown.
+	Secrets(host *Host) []Secret
 }
 
 // authToken returns the token that cli's "auth token" command prints,
@@ -321,15 +326,6 @@ func protectRepository(host *Host, run *docker.Run, agents []Agent) error {
 func configure(ctx context.Context, host *Host, run *docker.Run, agents []Agent) error {
 	cfg := host.Config
 
-	secrets, err := extraSecrets(cfg.ExtraSecretEnvVars)
-	if err != nil {
-		return err
-	}
-
-	if err := AddSecrets(ctx, run, secrets...); err != nil {
-		return err
-	}
-
 	if err := opBridge(run, cfg.OPAllowedSecretRefs); err != nil {
 		return err
 	}
@@ -362,6 +358,7 @@ func configure(ctx context.Context, host *Host, run *docker.Run, agents []Agent)
 // Build returns the docker run arguments that run agent in a sandbox
 // for host. known are every agent asbx can run, whose files are
 // protected whichever runs, and may include agent.
+// The secrets from 1Password aren't added, [Run] reads them.
 func Build(ctx context.Context, host *Host, agent Agent, known []Agent) (*docker.Run, error) {
 	run := &docker.Run{}
 	run.Arg("--rm", "-it")
@@ -425,17 +422,34 @@ func Run(ctx context.Context, host *Host, agent Agent, known []Agent, args []str
 		return err
 	}
 
+	secrets, err := secretsFor(host, agent)
+	if err != nil {
+		return err
+	}
+
 	allow, err := opbridge.ParseAllowlist(host.Config.OPAllowedSecretRefs)
 	if err != nil {
 		return err
 	}
 
-	announce(host, agent, run, allow)
+	// The banner is shown first, so the user knows what's starting when
+	// 1Password asks to be unlocked, or to create a secret.
+	t := term.New()
+	announce(t, host, agent, run, allow, secrets)
+
+	if err := addSecrets(ctx, t, run, secrets...); err != nil {
+		return err
+	}
+
+	starting(t, agent.Name())
 
 	image := imageRepository + ":" + imageTag
 	cmd := append([]string{Entrypoint, agent.Name()}, args...)
 	if allow.Empty() {
-		return docker.Exec(ctx, run, image, cmd)
+		err := docker.Exec(ctx, run, image, cmd)
+		goodbye(t, err)
+
+		return err
 	}
 
 	// The bridge runs for as long as the container does.
@@ -449,6 +463,8 @@ func Run(ctx context.Context, host *Host, agent Agent, known []Agent, args []str
 	err = docker.Exec(ctx, run, image, cmd)
 	stopBridge()
 	wg.Wait()
+
+	goodbye(t, err)
 
 	return err
 }

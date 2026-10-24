@@ -25,6 +25,7 @@ import (
 	"strings"
 	"testing"
 
+	"git.rgst.io/jaredallard/asbx/internal/term"
 	"gotest.tools/v3/assert"
 )
 
@@ -33,9 +34,9 @@ const path = "/p/.asbx.yaml"
 
 // interactive returns a terminal that answers with answer, and the
 // buffer what's shown on it is written to.
-func interactive(answer string) (Terminal, *strings.Builder) {
+func interactive(answer string) (*term.Terminal, *strings.Builder) {
 	var out strings.Builder
-	return Terminal{In: strings.NewReader(answer), Out: &out, Interactive: true, Width: 30}, &out
+	return &term.Terminal{In: strings.NewReader(answer), Out: &out, Interactive: true, Accessible: true, Width: 30}, &out
 }
 
 // trustCopy writes data to store as the trusted copy of path.
@@ -57,26 +58,26 @@ func TestVerifyTrusted(t *testing.T) {
 	store := Store{Dir: t.TempDir()}
 	trustCopy(t, store, "network_host: true\n")
 
-	term, out := interactive("")
-	assert.NilError(t, store.Verify(path, []byte("network_host: true\n"), term))
+	terminal, out := interactive("")
+	assert.NilError(t, store.Verify(path, []byte("network_host: true\n"), terminal))
 	assert.Equal(t, out.String(), "")
 }
 
 // TestVerifyNewTrusted verifies that a new file is shown in full and,
 // once the user trusts it, stored, so they aren't asked about it again.
 func TestVerifyNewTrusted(t *testing.T) {
-	for _, answer := range []string{"y\n", "yes\n", "Y\n", " YES \n", "y"} {
+	for _, answer := range []string{"y\n", "yes\n", "Y\n", "y"} {
 		t.Run(strings.TrimSpace(answer), func(t *testing.T) {
 			store := Store{Dir: filepath.Join(t.TempDir(), "trusted")}
 
-			term, out := interactive(answer)
-			assert.NilError(t, store.Verify(path, []byte("network_host: true\n"), term))
+			terminal, out := interactive(answer)
+			assert.NilError(t, store.Verify(path, []byte("network_host: true\n"), terminal))
 			assert.Assert(t, strings.Contains(out.String(), path+" is new, review it before it's used:\n"), "Verify() wrote:\n%s", out)
 			assert.Assert(t, strings.Contains(out.String(), "   1   │ network_host: true\n"), "Verify() wrote:\n%s", out)
-			assert.Assert(t, strings.HasSuffix(out.String(), "Trust this configuration? [y/N] "), "Verify() wrote:\n%s", out)
+			assert.Assert(t, strings.Contains(out.String(), "Trust this configuration? [y/N]"), "Verify() wrote:\n%s", out)
 
-			term, out = interactive("")
-			assert.NilError(t, store.Verify(path, []byte("network_host: true\n"), term))
+			terminal, out = interactive("")
+			assert.NilError(t, store.Verify(path, []byte("network_host: true\n"), terminal))
 			assert.Equal(t, out.String(), "")
 		})
 	}
@@ -89,8 +90,8 @@ func TestVerifyChangedTrusted(t *testing.T) {
 	store := Store{Dir: t.TempDir()}
 	trustCopy(t, store, "network_host: false\n")
 
-	term, out := interactive("y\n")
-	assert.NilError(t, store.Verify(path, []byte("network_host: true\n"), term))
+	terminal, out := interactive("y\n")
+	assert.NilError(t, store.Verify(path, []byte("network_host: true\n"), terminal))
 
 	header := path + " is changed since it was trusted, review it before it's used:\n"
 	assert.Assert(t, strings.Contains(out.String(), header), "Verify() wrote:\n%s", out)
@@ -118,8 +119,8 @@ func TestVerifyNewDeclined(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			store := Store{Dir: t.TempDir()}
 
-			term, _ := interactive(tt.answer)
-			err := store.Verify(path, []byte("network_host: true\n"), term)
+			terminal, _ := interactive(tt.answer)
+			err := store.Verify(path, []byte("network_host: true\n"), terminal)
 			assert.Assert(t, errors.Is(err, ErrNotTrusted), "Verify() = %v, want ErrNotTrusted", err)
 
 			_, err = os.Stat(store.copyPath(path))
@@ -144,8 +145,8 @@ func TestVerifyChangedDeclined(t *testing.T) {
 			store := Store{Dir: t.TempDir()}
 			trustCopy(t, store, "network_host: false\n")
 
-			term, _ := interactive(tt.answer)
-			err := store.Verify(path, []byte("network_host: true\n"), term)
+			terminal, _ := interactive(tt.answer)
+			err := store.Verify(path, []byte("network_host: true\n"), terminal)
 			assert.Assert(t, errors.Is(err, ErrNotTrusted), "Verify() = %v, want ErrNotTrusted", err)
 
 			got, err := os.ReadFile(store.copyPath(path))
@@ -157,9 +158,9 @@ func TestVerifyChangedDeclined(t *testing.T) {
 
 // notInteractive returns a terminal with no user to ask, and the buffer
 // what's shown on it is written to.
-func notInteractive() (Terminal, *strings.Builder) {
+func notInteractive() (*term.Terminal, *strings.Builder) {
 	var out strings.Builder
-	return Terminal{In: strings.NewReader("y\n"), Out: &out}, &out
+	return &term.Terminal{In: strings.NewReader("y\n"), Out: &out}, &out
 }
 
 // TestVerifyNewNotInteractive verifies that, without a user to ask, a
@@ -167,8 +168,8 @@ func notInteractive() (Terminal, *strings.Builder) {
 func TestVerifyNewNotInteractive(t *testing.T) {
 	store := Store{Dir: t.TempDir()}
 
-	term, out := notInteractive()
-	err := store.Verify(path, []byte("network_host: true\n"), term)
+	terminal, out := notInteractive()
+	err := store.Verify(path, []byte("network_host: true\n"), terminal)
 	assert.Assert(t, errors.Is(err, ErrNotTrusted), "Verify() = %v, want ErrNotTrusted", err)
 	assert.ErrorContains(t, err, path+" is new, run asbx in a terminal to review it")
 	assert.Equal(t, out.String(), "")
@@ -183,8 +184,8 @@ func TestVerifyChangedNotInteractive(t *testing.T) {
 	store := Store{Dir: t.TempDir()}
 	trustCopy(t, store, "network_host: false\n")
 
-	term, out := notInteractive()
-	err := store.Verify(path, []byte("network_host: true\n"), term)
+	terminal, out := notInteractive()
+	err := store.Verify(path, []byte("network_host: true\n"), terminal)
 	assert.Assert(t, errors.Is(err, ErrNotTrusted), "Verify() = %v, want ErrNotTrusted", err)
 	assert.ErrorContains(t, err, path+" is changed since it was trusted, run asbx in a terminal to review it")
 	assert.Equal(t, out.String(), "")
@@ -200,8 +201,8 @@ func TestVerifyKeyedByPath(t *testing.T) {
 	store := Store{Dir: t.TempDir()}
 	trustCopy(t, store, "network_host: true\n")
 
-	term, _ := interactive("")
-	err := store.Verify("/other/.asbx.yaml", []byte("network_host: true\n"), term)
+	terminal, _ := interactive("")
+	err := store.Verify("/other/.asbx.yaml", []byte("network_host: true\n"), terminal)
 	assert.Assert(t, errors.Is(err, ErrNotTrusted), "Verify() = %v, want ErrNotTrusted", err)
 }
 
@@ -216,29 +217,29 @@ func TestVerifyDirTrusted(t *testing.T) {
 		t.Fatalf("WriteFile(%q) = %v", store.recordPath(dirPath), err)
 	}
 
-	term, out := interactive("")
-	assert.NilError(t, store.Verify(dirPath, term))
+	terminal, out := interactive("")
+	assert.NilError(t, store.Verify(dirPath, terminal))
 	assert.Equal(t, out.String(), "")
 }
 
 // TestVerifyDirNewTrusted verifies that a directory the user trusts is
 // recorded, with its path, so they aren't asked about it again.
 func TestVerifyDirNewTrusted(t *testing.T) {
-	for _, answer := range []string{"y\n", "yes\n", "Y\n", " YES \n", "y"} {
+	for _, answer := range []string{"y\n", "yes\n", "Y\n", "y"} {
 		t.Run(strings.TrimSpace(answer), func(t *testing.T) {
 			store := DirStore{Dir: filepath.Join(t.TempDir(), "trusted")}
 
-			term, out := interactive(answer)
-			assert.NilError(t, store.Verify(dirPath, term))
+			terminal, out := interactive(answer)
+			assert.NilError(t, store.Verify(dirPath, terminal))
 			assert.Assert(t, strings.HasPrefix(out.String(), dirPath+" hasn't been trusted."), "Verify() wrote:\n%s", out)
-			assert.Assert(t, strings.HasSuffix(out.String(), "Trust this directory? [y/N] "), "Verify() wrote:\n%s", out)
+			assert.Assert(t, strings.Contains(out.String(), "Trust this directory? [y/N]"), "Verify() wrote:\n%s", out)
 
 			got, err := os.ReadFile(store.recordPath(dirPath))
 			assert.NilError(t, err)
 			assert.Equal(t, string(got), dirPath+"\n")
 
-			term, out = interactive("")
-			assert.NilError(t, store.Verify(dirPath, term))
+			terminal, out = interactive("")
+			assert.NilError(t, store.Verify(dirPath, terminal))
 			assert.Equal(t, out.String(), "")
 		})
 	}
@@ -261,8 +262,8 @@ func TestVerifyDirDeclined(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			store := DirStore{Dir: t.TempDir()}
 
-			term, _ := interactive(tt.answer)
-			err := store.Verify(dirPath, term)
+			terminal, _ := interactive(tt.answer)
+			err := store.Verify(dirPath, terminal)
 			assert.Assert(t, errors.Is(err, ErrNotTrusted), "Verify() = %v, want ErrNotTrusted", err)
 
 			_, err = os.Stat(store.recordPath(dirPath))
@@ -276,8 +277,8 @@ func TestVerifyDirDeclined(t *testing.T) {
 func TestVerifyDirNotInteractive(t *testing.T) {
 	store := DirStore{Dir: t.TempDir()}
 
-	term, out := notInteractive()
-	err := store.Verify(dirPath, term)
+	terminal, out := notInteractive()
+	err := store.Verify(dirPath, terminal)
 	assert.Assert(t, errors.Is(err, ErrNotTrusted), "Verify() = %v, want ErrNotTrusted", err)
 	assert.ErrorContains(t, err, dirPath+" hasn't been trusted, run asbx in a terminal to trust it")
 	assert.Equal(t, out.String(), "")
@@ -291,8 +292,8 @@ func TestVerifyDirNotInteractive(t *testing.T) {
 func TestVerifyDirEscapesPath(t *testing.T) {
 	store := DirStore{Dir: t.TempDir()}
 
-	term, out := interactive("n\n")
-	err := store.Verify("/p\x1b[2K", term)
+	terminal, out := interactive("n\n")
+	err := store.Verify("/p\x1b[2K", terminal)
 	assert.Assert(t, errors.Is(err, ErrNotTrusted), "Verify() = %v, want ErrNotTrusted", err)
 	assert.Assert(t, strings.HasPrefix(out.String(), `/p\x1b[2K hasn't been trusted.`), "Verify() wrote:\n%q", out)
 }

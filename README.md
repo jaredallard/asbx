@@ -70,14 +70,18 @@ brew trust --cask jaredallard/tap/asbx
 brew install --cask jaredallard/tap/asbx
 ```
 
-* **Codex**: Create an *API Credential* type 1Password item with your
-  Codex token named `codex-token` in the `credential` field.
-* **Claude**: Create an *API Credential* type 1Password item with your
-  Claude token named `claude-token` in the `credential` field. Need a
-  token? Run `claude setup-token` on your host. Note that it expires
-  after a year as of the time of writing.
-
 Run a sandbox: `asbx` (or, specify the agent with `asbx claude`).
+
+The first time it runs, asbx writes the default configuration to
+`~/.config/asbx/config.yaml`. If the agent's token isn't in 1Password
+yet, asbx offers to create its _API Credential_ item for you and asks
+you to paste the token:
+
+- **Claude**: `claude-token` in the `Private` vault, in the
+  `credential` field. Need a token? Run `claude setup-token` on your
+  host. Note that it expires after a year as of the time of writing.
+- **Codex**: `codex-token` in the `Private` vault, in the `credential`
+  field. Create one at <https://platform.openai.com/api-keys>.
 
 > [!NOTE]
 > Want to store your 1Password item in a different location or add
@@ -86,14 +90,10 @@ Run a sandbox: `asbx` (or, specify the agent with `asbx claude`).
 
 ## Configuration
 
-asbx reads `~/.config/asbx/config.yaml` for configuration values.
-
-To get started, copy [config.example.yaml](config.example.yaml):
-
-```bash
-mkdir -p ~/.config/asbx
-cp config.example.yaml ~/.config/asbx/config.yaml
-```
+asbx reads `~/.config/asbx/config.yaml` for configuration values. When
+it doesn't exist, asbx writes
+[the example configuration](internal/config/embed/config.example.yaml),
+which documents every option, there.
 
 Repositories can also have their own `.asbx.yaml` file at its git root
 (or the working directory outside of a git repo). It takes the same
@@ -121,11 +121,15 @@ file each containing its path; delete one to be asked again.
 > [!NOTE]
 > The old `KEY=value` files, `~/.config/asbx/config` and `.asbx`, are
 > no longer read. asbx refuses to run while one exists, convert it to
-> YAML using [config.example.yaml](config.example.yaml).
+> YAML using
+> [the example configuration](internal/config/embed/config.example.yaml).
 
 Every option is off when it isn't set, except `forgejo_enabled` and
 `github_enabled`, which are on and skipped when `fj` or `gh` isn't
-logged in, and `agent`, which is `claude`. The `claude.` and `codex.`
+logged in, `agent`, which is `claude`, and `claude.oauth_token_secret_ref`
+and `codex.api_key_secret_ref`, which are
+`op://Private/claude-token/credential` and
+`op://Private/codex-token/credential`. The `claude.` and `codex.`
 options are nested under `claude:` and `codex:` maps, as in the example.
 
 | Option                            | Type   | Description                                                                                                                                                            |
@@ -138,11 +142,11 @@ options are nested under `claude:` and `codex:` maps, as in the example.
 | `network_host`                    | bool   | Runs the container on the host's network, so it can reach every service listening on localhost. Otherwise host services are only reachable via `host.docker.internal`. |
 | `podman_enabled`                  | bool   | Lets the agent run containers with rootless Podman inside the container. See [Podman](#podman).                                                                        |
 | `extra_mounts`                    | list   | Absolute paths to mount read-only at the same path inside the container.                                                                                               |
-| `claude.oauth_token_secret_ref`   | string | 1Password `op://` ref to read `CLAUDE_CODE_OAUTH_TOKEN` from.                                                                                                          |
+| `claude.oauth_token_secret_ref`   | string | 1Password `op://` ref to read `CLAUDE_CODE_OAUTH_TOKEN` from. When it's the default and the item doesn't exist, asbx offers to create it. `''` passes none.            |
 | `claude.litellm_token_secret_ref` | string | 1Password `op://` ref to read `LITELLM_API_KEY` from.                                                                                                                  |
 | `claude.mirror_managed_settings`  | bool   | Mounts your OS specific managed settings into the container.                                                                                                           |
 | `claude.mirror_projects`          | bool   | Mounts this directory's Claude sessions and memory read-write, so the host and container can resume each other's sessions.                                             |
-| `codex.api_key_secret_ref`        | string | 1Password `op://` ref to read `OPENAI_API_KEY` from, which Codex is logged in with.                                                                                    |
+| `codex.api_key_secret_ref`        | string | 1Password `op://` ref to read `OPENAI_API_KEY` from, which Codex is logged in with. When it's the default and the item doesn't exist, asbx offers to create it.        |
 
 ### 1Password CLI
 
@@ -215,7 +219,6 @@ The container is the sandbox, so Codex's own is turned off in it
 (`sandbox_mode = "danger-full-access"`); it generally can't run inside
 Docker's default seccomp profile anyway. Codex still asks for approval
 as configured, and `--sandbox` overrides it.
-
 
 ## Security
 
