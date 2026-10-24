@@ -60,7 +60,15 @@ release:
     **Full Changelog**: https://git.rgst.io/jaredallard/asbx/compare/{{ .PreviousTag }}...{{ .Tag }}
 signs:
   - id: default
+    stdin: "{{ .Env.GPG_PASSWORD }}"
     args: [
+      # DEVIATION: GPG key is password protected.
+      "--batch",
+      "--pinentry-mode",
+      "loopback",
+      "--passphrase-fd",
+      "0",
+
       "-u",
       "515E8B922886A22A485C1C9F2DCAE84699708BC6",
       "--output",
