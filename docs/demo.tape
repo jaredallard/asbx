@@ -30,13 +30,19 @@ Set Width 1200
 Set Height 600
 Set Padding 20
 Set Theme "Catppuccin Mocha"
-Set TypingSpeed 75ms
+Set TypingSpeed 50ms
 
 # A plain prompt, so only asbx shows.
 Hide
 Type "export PS1='$ ' && clear"
 Enter
 Show
+
+# Show we're not on Ubuntu
+Type "bat /etc/os-release"
+Sleep 200ms
+Enter
+Sleep 200ms
 
 Type "asbx"
 Sleep 500ms
@@ -46,10 +52,17 @@ Enter
 # covers pulling the image and installing tools on a cold start.
 Wait+Screen@15s /sandbox starting/
 Wait+Screen@90s /auto mode on/
-Sleep 3s
+Sleep 200ms
+
+# Show we're on Ubuntu now
+Type "Hey Claude, what's the contents of /etc/os-release"
+Enter
+Wait+Screen@90s /ubuntu/
+Sleep 13s
 
 # Quit Claude Code, so the container doesn't outlive the recording.
 Hide
 Ctrl+C
 Ctrl+C
-Wait+Screen@15s /goodbye!/
+Ctrl+C
+Sleep 3s
