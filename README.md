@@ -175,11 +175,12 @@ Query params such as `?attribute=otp` are supported.
 
 With `podman_enabled`, the agent can run containers inside the
 container with rootless Podman, using `podman` or `docker`, or the
-Docker API at `DOCKER_HOST` (e.g., for testcontainers). Your host's
-Docker socket isn't mounted, and the container gets no more
-capabilities: Podman nests its containers in user namespaces, which
-needs a seccomp profile that allows the syscalls to create them and
-mount in them. Images are kept in a volume per working directory.
+Docker API at `DOCKER_HOST` or `/var/run/docker.sock` (e.g., for
+testcontainers). Your host's Docker socket isn't mounted, and the
+container gets no more capabilities: Podman nests its containers in
+user namespaces, which needs a seccomp profile that allows the
+syscalls to create them and mount in them. Images are kept in a volume
+per working directory.
 
 Containers inside the container differ from Docker's in a few ways:
 

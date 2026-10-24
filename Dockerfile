@@ -22,6 +22,9 @@ RUN <<EOF
 	apt-get install -y sudo jq curl wget net-tools dnsutils git openssh-client build-essential
 EOF
 
+# Where Podman keeps its runtime state and API socket.
+ENV XDG_RUNTIME_DIR=/run/user/1000
+
 # Install rootless Podman, for podman_enabled. newuidmap and newgidmap
 # get file capabilities rather than setuid root. As root, writing a user
 # namespace's ID maps needs CAP_SYS_ADMIN, which the container doesn't
@@ -41,12 +44,14 @@ RUN <<EOF
 	# Every ID below 65536 but ubuntu's own, so they fit in rootless
 	# Docker's user namespace.
 	printf 'ubuntu:1:999\nubuntu:1001:64535\n' | tee /etc/subuid >/etc/subgid
+
+	# podman-docker links /var/run/docker.sock to rootful Podman's
+	# socket, which never exists here; use rootless Podman's instead, for
+	# tools that ignore DOCKER_HOST.
+	ln -sfn "$XDG_RUNTIME_DIR/podman/podman.sock" /var/run/docker.sock
 EOF
 
 COPY rootfs/containers.conf /etc/containers/containers.conf
-
-# Where Podman keeps its runtime state and API socket.
-ENV XDG_RUNTIME_DIR=/run/user/1000
 
 # Install Google Chrome for agents to use for browser based testing.
 RUN <<EOF
