@@ -16,8 +16,8 @@
 // SPDX-License-Identifier: GPL-3.0
 
 // Package main implements asbx-op. It reads secrets through the host's
-// op, limited to the refs the host allows, and only supports op read
-// and op run.
+// op, limited to the refs the host allows, and only supports op read,
+// op run and op item list.
 package main
 
 import (
@@ -30,6 +30,7 @@ import (
 	"strconv"
 	"syscall"
 
+	"git.rgst.io/jaredallard/asbx/internal/onepassword"
 	"git.rgst.io/jaredallard/asbx/internal/opbridge"
 	"git.rgst.io/jaredallard/asbx/internal/opshim"
 	"github.com/urfave/cli/v3"
@@ -95,6 +96,64 @@ func runCommand() *cli.Command {
 	}
 }
 
+// listItems lists the items with a field the container may read
+// through the bridge, when it's enabled.
+func listItems(ctx context.Context, vault string) ([]onepassword.Item, error) {
+	return opbridge.ListItems(ctx, os.Getenv(opbridge.SocketEnv), vault)
+}
+
+// itemListCommand is op item list.
+func itemListCommand() *cli.Command {
+	// op's other options, which are accepted so that using one says it
+	// isn't supported, rather than that it doesn't exist.
+	unsupported := []cli.Flag{
+		&cli.StringFlag{Name: "categories", Hidden: true},
+		&cli.StringFlag{Name: "tags", Hidden: true},
+		&cli.BoolFlag{Name: "favorite", Hidden: true},
+		&cli.BoolFlag{Name: "include-archive", Hidden: true},
+		&cli.BoolFlag{Name: "long", Hidden: true},
+	}
+
+	return &cli.Command{
+		Name:        "list",
+		Aliases:     []string{"ls"},
+		Usage:       "List the items with a field you may read",
+		Description: "Only --vault and --format are supported, op's other options, such as --categories, aren't.",
+		Flags: append([]cli.Flag{
+			&cli.StringFlag{Name: "vault", Usage: "Only list the items in this vault"},
+			&cli.StringFlag{Name: "format", Value: "human", Usage: "Write the items as human or json"},
+		}, unsupported...),
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			for _, flag := range unsupported {
+				if name := flag.Names()[0]; cmd.IsSet(name) {
+					return fmt.Errorf("op item list --%s isn't supported in asbx, only --vault and --format are", name)
+				}
+			}
+
+			return opshim.ListItems(ctx, listItems, os.Stdout, opshim.ListOptions{
+				Vault:  cmd.String("vault"),
+				Format: cmd.String("format"),
+			})
+		},
+	}
+}
+
+// itemCommand is op item, of which only op item list is supported.
+func itemCommand() *cli.Command {
+	return &cli.Command{
+		Name:     "item",
+		Usage:    "Work with items, of which only listing them is supported",
+		Commands: []*cli.Command{itemListCommand()},
+		Action: func(_ context.Context, cmd *cli.Command) error {
+			if !cmd.Args().Present() {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+
+			return fmt.Errorf("op item %s isn't supported in asbx, only op item list is", cmd.Args().First())
+		},
+	}
+}
+
 // bridgeCommand runs the bridge, which the host does with docker exec.
 func bridgeCommand() *cli.Command {
 	return &cli.Command{
@@ -113,6 +172,7 @@ func main() {
 		Commands: []*cli.Command{
 			readCommand(),
 			runCommand(),
+			itemCommand(),
 			bridgeCommand(),
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
@@ -120,7 +180,7 @@ func main() {
 				return cli.ShowRootCommandHelp(cmd)
 			}
 
-			return fmt.Errorf("op %s isn't supported in asbx, only op read and op run are", cmd.Args().First())
+			return fmt.Errorf("op %s isn't supported in asbx, only op read, op run and op item list are", cmd.Args().First())
 		},
 
 		// We handle them separately.

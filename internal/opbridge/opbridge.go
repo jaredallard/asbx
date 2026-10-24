@@ -29,6 +29,8 @@
 // container, answered in order by a [Response] from the host.
 package opbridge
 
+import "git.rgst.io/jaredallard/asbx/internal/onepassword"
+
 // SocketEnv is the environment variable that holds the path of the
 // bridge's socket inside the container. It's only set when the bridge
 // is enabled.
@@ -37,14 +39,25 @@ const SocketEnv = "ASBX_OP_SOCKET"
 // Socket is where the bridge listens inside the container.
 const Socket = "/run/asbx/op.sock"
 
-// Request asks the host for the secret at an op:// ref.
+// CommandItemList is the [Request] command that lists the items with a
+// field the container may read.
+const CommandItemList = "item list"
+
+// Request asks the host to run an op command. Without one, it asks for
+// the secret at Ref.
 type Request struct {
-	Ref string `json:"ref"`
+	Command string `json:"command,omitempty"`
+	Ref     string `json:"ref,omitempty"`
+
+	// Vault, when set, narrows [CommandItemList] to the vault with this
+	// name or ID.
+	Vault string `json:"vault,omitempty"`
 }
 
-// Response is the host's answer to a [Request]: the secret, or why it
-// can't be read.
+// Response is the host's answer to a [Request]: the secret or items,
+// or why the command failed.
 type Response struct {
-	Value string `json:"value,omitempty"`
-	Error string `json:"error,omitempty"`
+	Value string             `json:"value,omitempty"`
+	Items []onepassword.Item `json:"items,omitempty"`
+	Error string             `json:"error,omitempty"`
 }

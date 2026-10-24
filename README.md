@@ -27,8 +27,8 @@ from your local machine with sane defaults and low setup cost.
 - Git commit signing works via ssh-agent (e.g., 1Password).
 - Forgejo authentication is passed through via `fj auth token`.
 - GitHub authentication is passed through via `gh auth token`.
-- `op read` and `op run` work in the container through your host's
-  `op`, limited to the secrets you allow if enabled.
+- `op read`, `op run` and `op item list` work in the container through
+  your host's `op`, limited to the secrets you allow if enabled.
 - Containers can be run in the container with rootless Podman, if
   enabled, without giving it access to your host's Docker or privileged
   access.
@@ -170,8 +170,14 @@ op_allowed_secret_refs:
 
 Query params such as `?attribute=otp` are supported.
 
+`op item list` in the container only lists the items with a field you
+allow, so the agent can find what it may read. Only each item's ID,
+title, vault, category and when it was created and edited are shown,
+not its username, websites, tags or other fields.
+
 > [!WARNING]
-> Only `op read` and `op run` are supported in the container.
+> Only `op read`, `op run` and `op item list` are supported in the
+> container.
 
 ### Podman
 

@@ -28,6 +28,8 @@ import (
 	"os"
 	"syscall"
 	"time"
+
+	"git.rgst.io/jaredallard/asbx/internal/onepassword"
 )
 
 // requestTimeout is how long the bridge waits for a client to send its
@@ -152,32 +154,57 @@ func dial(ctx context.Context, socket string) (net.Conn, error) {
 	}
 }
 
-// Read returns the secret at ref, an op:// secret reference, read by
-// the host's op through the bridge at socket. An empty socket means the
-// bridge isn't enabled, which is [ErrUnavailable].
-func Read(ctx context.Context, socket, ref string) (string, error) {
+// call sends req to the host through the bridge at socket and returns
+// its answer, or its error. An empty socket means the bridge isn't
+// enabled, which is [ErrUnavailable].
+func call(ctx context.Context, socket string, req *Request) (*Response, error) {
 	if socket == "" {
-		return "", ErrUnavailable
+		return nil, ErrUnavailable
 	}
 
 	conn, err := dial(ctx, socket)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer conn.Close()
 
-	if err := json.NewEncoder(conn).Encode(Request{Ref: ref}); err != nil {
-		return "", err
+	if err := json.NewEncoder(conn).Encode(req); err != nil {
+		return nil, err
 	}
 
 	var resp Response
 	if err := json.NewDecoder(conn).Decode(&resp); err != nil {
-		return "", fmt.Errorf("the asbx op bridge didn't answer: %w", err)
+		return nil, fmt.Errorf("the asbx op bridge didn't answer: %w", err)
 	}
 
 	if resp.Error != "" {
-		return "", errors.New(resp.Error)
+		return nil, errors.New(resp.Error)
+	}
+
+	return &resp, nil
+}
+
+// Read returns the secret at ref, an op:// secret reference, read by
+// the host's op through the bridge at socket. An empty socket means the
+// bridge isn't enabled, which is [ErrUnavailable].
+func Read(ctx context.Context, socket, ref string) (string, error) {
+	resp, err := call(ctx, socket, &Request{Ref: ref})
+	if err != nil {
+		return "", err
 	}
 
 	return resp.Value, nil
+}
+
+// ListItems returns the items with a field the container may read,
+// only from the vault with the name or ID vault, if it's set. They're
+// listed by the host's op through the bridge at socket. An empty socket
+// means the bridge isn't enabled, which is [ErrUnavailable].
+func ListItems(ctx context.Context, socket, vault string) ([]onepassword.Item, error) {
+	resp, err := call(ctx, socket, &Request{Command: CommandItemList, Vault: vault})
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.Items, nil
 }

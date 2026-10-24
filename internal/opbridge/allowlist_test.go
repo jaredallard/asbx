@@ -86,3 +86,62 @@ func TestParseAllowlistErrors(t *testing.T) {
 		assert.ErrorContains(t, err, "must be an op:// ref", "ParseAllowlist(%q)", entry)
 	}
 }
+
+// TestAllowlistAllowsField verifies that an entry for an attribute of a
+// field, such as ?attribute=otp, allows the field itself to be listed,
+// and that otherwise fields match as refs do.
+func TestAllowlistAllowsField(t *testing.T) {
+	allow, err := ParseAllowlist([]string{
+		"op://Dev/*/token",
+		"op://Dev/totp/code?attribute=otp",
+	})
+	assert.NilError(t, err)
+
+	tests := []struct {
+		ref  string
+		want bool
+	}{
+		{ref: "op://Dev/github/token", want: true},
+		{ref: "op://Dev/github/password", want: false},
+		{ref: "op://Dev/totp/code", want: true},
+		{ref: "op://Dev/totp/other", want: false},
+		{ref: "op://Dev/../token", want: false},
+	}
+
+	for _, tt := range tests {
+		got := allow.allowsField(tt.ref)
+		assert.Check(t, got == tt.want, "allowsField(%q) = %v, want %v", tt.ref, got, tt.want)
+	}
+}
+
+// TestAllowlistMayAllowItem verifies that an item is a candidate when
+// an entry's vault and item segments match it, so that no item an
+// entry allows a field of is missed.
+func TestAllowlistMayAllowItem(t *testing.T) {
+	tests := []struct {
+		entry string
+		vault string
+		item  string
+		want  bool
+	}{
+		{entry: "op://Dev/github/token", vault: "Dev", item: "github", want: true},
+		{entry: "op://Dev/github/token", vault: "Dev", item: "gitlab", want: false},
+		{entry: "op://Dev/github/token", vault: "Private", item: "github", want: false},
+		{entry: "op://Dev/*/token", vault: "Dev", item: "anything", want: true},
+		{entry: "op://Dev/git*/token", vault: "Dev", item: "gitea", want: true},
+		{entry: "op://Dev/**", vault: "Dev", item: "anything", want: true},
+		{entry: "op://**/token", vault: "Private", item: "bank", want: true},
+		{entry: "op://Dev/totp/code?attribute=otp", vault: "Dev", item: "totp", want: true},
+		{entry: "op://Dev/{a,b}/key", vault: "Dev", item: "a", want: false},
+		{entry: "op://Dev/{a,b}/key", vault: "Dev", item: "{a,b}", want: true},
+		{entry: "op://Dev", vault: "Dev", item: "github", want: false},
+	}
+
+	for _, tt := range tests {
+		allow, err := ParseAllowlist([]string{tt.entry})
+		assert.NilError(t, err)
+
+		got := allow.mayAllowItem(tt.vault, tt.item)
+		assert.Check(t, got == tt.want, "ParseAllowlist(%q).mayAllowItem(%q, %q) = %v, want %v", tt.entry, tt.vault, tt.item, got, tt.want)
+	}
+}

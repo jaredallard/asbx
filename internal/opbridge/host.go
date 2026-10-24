@@ -43,24 +43,68 @@ const retryInterval = 250 * time.Millisecond
 // ReadFunc reads the secret at an op:// ref.
 type ReadFunc func(ctx context.Context, ref string) (string, error)
 
-// answer returns the Response to req, reading it with read only if
-// allow allows it.
-func answer(ctx context.Context, req *Request, allow *Allowlist, read ReadFunc) Response {
-	if !allow.Allows(req.Ref) {
-		return Response{Error: fmt.Sprintf("%q isn't in op_allowed_secret_refs", req.Ref)}
-	}
+// OP is the host's op, which [Serve] answers requests with.
+type OP interface {
+	// Read returns the secret at an op:// ref.
+	Read(ctx context.Context, ref string) (string, error)
 
-	value, err := read(ctx, req.Ref)
-	if err != nil {
-		return Response{Error: err.Error()}
-	}
+	// ListItems returns every item, except archived ones.
+	ListItems(ctx context.Context) ([]onepassword.Item, error)
 
-	return Response{Value: value}
+	// FieldRefs returns the op:// refs of each of items' fields, by
+	// item ID.
+	FieldRefs(ctx context.Context, items []onepassword.Item) (map[string][]string, error)
+}
+
+// hostOP is the [OP] that runs op on the host, without prompting.
+type hostOP struct{}
+
+// Read implements [OP].
+func (hostOP) Read(ctx context.Context, ref string) (string, error) {
+	return onepassword.ReadNonInteractive(ctx, ref)
+}
+
+// ListItems implements [OP].
+func (hostOP) ListItems(ctx context.Context) ([]onepassword.Item, error) {
+	return onepassword.ListItemsNonInteractive(ctx)
+}
+
+// FieldRefs implements [OP].
+func (hostOP) FieldRefs(ctx context.Context, items []onepassword.Item) (map[string][]string, error) {
+	return onepassword.FieldRefsNonInteractive(ctx, items)
+}
+
+// answer returns the Response to req, run with op, which only reads
+// refs allow allows and only lists items with a field it allows.
+func answer(ctx context.Context, req *Request, allow *Allowlist, op OP) Response {
+	switch req.Command {
+	case "":
+		if !allow.Allows(req.Ref) {
+			return Response{Error: fmt.Sprintf("%q isn't in op_allowed_secret_refs", req.Ref)}
+		}
+
+		value, err := op.Read(ctx, req.Ref)
+		if err != nil {
+			return Response{Error: err.Error()}
+		}
+
+		return Response{Value: value}
+	case CommandItemList:
+		items, err := allowedItems(ctx, op, allow, req.Vault)
+		if err != nil {
+			return Response{Error: err.Error()}
+		}
+
+		return Response{Items: items}
+	default:
+		return Response{Error: fmt.Sprintf("op %s isn't supported in asbx", req.Command)}
+	}
 }
 
 // Serve answers each [Request] read from r on w, in order, until r is
-// closed. Only refs allow allows are read, with read.
-func Serve(ctx context.Context, r io.Reader, w io.Writer, allow *Allowlist, read ReadFunc) error {
+// closed, with op. Only refs allow allows are read, and only items with
+// a field it allows are listed.
+func Serve(ctx context.Context, r io.Reader, w io.Writer, allow *Allowlist, op OP) error {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(nil, maxRequest)
 
@@ -71,7 +115,7 @@ func Serve(ctx context.Context, r io.Reader, w io.Writer, allow *Allowlist, read
 			return fmt.Errorf("invalid request from the container: %w", err)
 		}
 
-		resp := answer(ctx, &req, allow, read)
+		resp := answer(ctx, &req, allow, op)
 		if err := enc.Encode(resp); err != nil {
 			return err
 		}
@@ -114,7 +158,7 @@ func serveExec(ctx context.Context, container string, allow *Allowlist) error {
 
 	served := make(chan error, 1)
 	go func() {
-		err := Serve(ctx, requests, responses, allow, onepassword.ReadNonInteractive)
+		err := Serve(ctx, requests, responses, allow, hostOP{})
 		cancel()
 		served <- err
 	}()

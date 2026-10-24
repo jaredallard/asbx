@@ -16,8 +16,7 @@
 // SPDX-License-Identifier: GPL-3.0
 
 // Package opshim implements the op commands that work inside the
-// sandbox, op read and op run, on top of reading a single secret
-// through the op bridge.
+// sandbox, op read, op run and op item list, on top of the op bridge.
 package opshim
 
 import (

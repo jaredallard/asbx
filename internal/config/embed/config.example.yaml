@@ -17,7 +17,8 @@ github_enabled: true
 
 # op_allowed_secret_refs are the 1Password `op://` refs that `op read`
 # and `op run` inside the container may read through the host's `op`,
-# which must be installed. `*` matches anything within one path segment,
+# which must be installed. `op item list` only lists the items with a
+# field allowed here. `*` matches anything within one path segment,
 # `**` any number of them. For example:
 #
 # op_allowed_secret_refs:

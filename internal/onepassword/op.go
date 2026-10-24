@@ -24,10 +24,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"slices"
 	"strings"
+	"time"
 
 	"go.rgst.io/jaredallard/cmdexec/v2"
 )
@@ -59,18 +61,28 @@ func Read(ctx context.Context, ref string) (string, error) {
 	return read(cmd)
 }
 
+// nonInteractive returns err, from running op without setting its
+// stderr, with why op failed added, since there's no terminal it was
+// shown on.
+func nonInteractive(err error) error {
+	// Output captures stderr when it isn't set.
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && len(exitErr.Stderr) > 0 {
+		return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(exitErr.Stderr)))
+	}
+
+	return err
+}
+
 // ReadNonInteractive is [Read] for when something else, such as the
 // agent, controls the terminal and writing to it would be bad UX.
 func ReadNonInteractive(ctx context.Context, ref string) (string, error) {
 	secret, err := read(cmdexec.CommandContext(ctx, "op", "read", ref))
-
-	// Output captures stderr when it isn't set.
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) && len(exitErr.Stderr) > 0 {
-		return "", fmt.Errorf("%w: %s", err, strings.TrimSpace(string(exitErr.Stderr)))
+	if err != nil {
+		return "", nonInteractive(err)
 	}
 
-	return secret, err
+	return secret, nil
 }
 
 // ParseRef returns the vault, item and field of ref, an op:// secret
@@ -83,6 +95,125 @@ func ParseRef(ref string) (vault, item, field string, err error) {
 	}
 
 	return parts[0], parts[1], parts[2], nil
+}
+
+// Item is an item as op item list --format json describes it, without
+// its fields. Its tags, websites and additional information, such as a
+// login's username, are left out too, since items are listed to the
+// container, which may only see the fields it's allowed to read.
+type Item struct {
+	ID           string    `json:"id"`
+	Title        string    `json:"title"`
+	Version      int       `json:"version,omitempty"`
+	Vault        ItemVault `json:"vault"`
+	Category     string    `json:"category,omitempty"`
+	LastEditedBy string    `json:"last_edited_by,omitempty"`
+	CreatedAt    time.Time `json:"created_at,omitzero"`
+	UpdatedAt    time.Time `json:"updated_at,omitzero"`
+}
+
+// ItemVault is the vault an [Item] is in.
+type ItemVault struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// ListItemsNonInteractive returns every item in every vault, except
+// archived ones. Like [ReadNonInteractive], op can't prompt.
+func ListItemsNonInteractive(ctx context.Context) ([]Item, error) {
+	out, err := cmdexec.CommandContext(ctx, "op", "item", "list", "--format", "json").Output()
+	if err != nil {
+		return nil, nonInteractive(err)
+	}
+
+	var items []Item
+	if err := json.Unmarshal(out, &items); err != nil {
+		return nil, fmt.Errorf("unable to parse op item list output: %w", err)
+	}
+
+	return items, nil
+}
+
+// itemFields is an item as op item get --format json describes it,
+// with only its ID and the refs of its fields, so their values aren't
+// decoded.
+type itemFields struct {
+	ID     string `json:"id"`
+	Fields []struct {
+		Reference string `json:"reference"`
+	} `json:"fields"`
+}
+
+// decodeItemFields decodes the items op item get writes to r, one JSON
+// value after another, each an item or an array of them.
+func decodeItemFields(r io.Reader) ([]itemFields, error) {
+	var items []itemFields
+	dec := json.NewDecoder(r)
+	for {
+		var raw json.RawMessage
+		err := dec.Decode(&raw)
+		if errors.Is(err, io.EOF) {
+			return items, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		if raw[0] == '[' {
+			var some []itemFields
+			if err := json.Unmarshal(raw, &some); err != nil {
+				return nil, err
+			}
+
+			items = append(items, some...)
+			continue
+		}
+
+		var one itemFields
+		if err := json.Unmarshal(raw, &one); err != nil {
+			return nil, err
+		}
+
+		items = append(items, one)
+	}
+}
+
+// FieldRefsNonInteractive returns the op:// refs of each of items'
+// fields, by item ID. All of them are fetched by one op call. op's
+// output, which has the fields' values, is held while it's decoded, but
+// only the refs are decoded, so the values never leave this function.
+// Like [ReadNonInteractive], op can't prompt.
+func FieldRefsNonInteractive(ctx context.Context, items []Item) (map[string][]string, error) {
+	list, err := json.Marshal(items)
+	if err != nil {
+		return nil, err
+	}
+
+	// "-" reads the items to get from stdin, as op item list writes
+	// them.
+	cmd := cmdexec.CommandContext(ctx, "op", "item", "get", "-", "--format", "json")
+	cmd.SetStdin(bytes.NewReader(list))
+
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, nonInteractive(err)
+	}
+
+	got, err := decodeItemFields(bytes.NewReader(out))
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse op item get output: %w", err)
+	}
+
+	refs := make(map[string][]string)
+	for _, item := range got {
+		for _, field := range item.Fields {
+			if field.Reference != "" {
+				refs[item.ID] = append(refs[item.ID], field.Reference)
+			}
+		}
+	}
+
+	return refs, nil
 }
 
 // ItemExists reports whether vault has an item titled item. Archived
@@ -98,6 +229,8 @@ func ItemExists(ctx context.Context, vault, item string) (bool, error) {
 		return false, err
 	}
 
+	// Only titles are decoded, so other fields op may describe
+	// differently don't matter.
 	var items []struct {
 		Title string `json:"title"`
 	}
