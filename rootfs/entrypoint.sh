@@ -68,7 +68,11 @@ setup_common() {
 			install_args+=("--locked")
 		fi
 
-		mise install "${install_args[@]}"
+		# Its output is only shown when there's something to install,
+		# it's noise otherwise.
+		if ! mise -q install --dry-run-code "${install_args[@]}" &>/dev/null; then
+			mise install "${install_args[@]}"
+		fi
 	fi
 }
 
