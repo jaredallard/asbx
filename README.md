@@ -38,7 +38,8 @@ Or add it to your mise config:
 ## Configuration
 
 asbx reads `~/.config/asbx/config` for configuration values. Note that
-it is NOT sourced, so shell expansion is not supported.
+it is NOT sourced, so shell expansion is not supported. Options are
+only read from config files, never from environment variables.
 
 To get started, copy [config.example](config.example):
 

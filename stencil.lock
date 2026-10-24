@@ -87,11 +87,13 @@ files:
     - name: cmd/asbx/asbx.go
       template: cmd/$name/name.go.tpl
       module: go.rgst.io/rgst-io/stencil-golang
-      status: managed
+      status: unmanaged
+      status_reason: Template called file.Static and output already existed
     - name: go.mod
       template: go.mod.tpl
       module: go.rgst.io/rgst-io/stencil-golang
-      status: managed
+      status: unmanaged
+      status_reason: Template called file.Static and output already existed
     - name: renovate.json
       template: renovate.json.tpl
       module: go.rgst.io/rgst-io/stencil-golang

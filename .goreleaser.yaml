@@ -40,8 +40,10 @@ dockers_v2:
     platforms:
       - linux/amd64
       - linux/arm64
-  ## <<Stencil::Block(extraDockerOpts)>>
-
+    ## <<Stencil::Block(extraDockerOpts)>>
+    flags:
+      - --cache-from=type=gha
+      - --cache-to=type=gha,mode=max
   ## <</Stencil::Block>>
 checksum:
   name_template: "checksums.txt"
@@ -56,6 +58,17 @@ release:
   prerelease: "auto"
   footer: |-
     **Full Changelog**: https://git.rgst.io/jaredallard/asbx/compare/{{ .PreviousTag }}...{{ .Tag }}
+signs:
+  - id: default
+    args: [
+      "-u",
+      "515E8B922886A22A485C1C9F2DCAE84699708BC6",
+      "--output",
+      "${signature}",
+      "--detach-sign",
+      "${artifact}",
+    ]
+    artifacts: all
 gitea_urls:
   api: https://git.rgst.io/api/v1
   download: https://git.rgst.io

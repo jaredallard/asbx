@@ -7,5 +7,7 @@ arguments:
   vcs: forgejo
   vcs_host: git.rgst.io
   release_targets: [vcs]
+  release_signature_method: [gpg]
+  release_signature_key_id: 515E8B922886A22A485C1C9F2DCAE84699708BC6
 modules:
   - name: go.rgst.io/rgst-io/stencil-golang

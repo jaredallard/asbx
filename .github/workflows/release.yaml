@@ -41,7 +41,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       ## <<Stencil::Block(releaseSetup)>>
-
+      # Caching to type=gha needs a docker-container buildx builder, and
+      # the Actions runtime variables that run steps don't get.
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: crazy-max/ghaction-github-runtime@v4
       ## <</Stencil::Block>>
       - uses: actions/checkout@v7
         with:

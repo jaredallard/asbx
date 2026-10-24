@@ -1,0 +1,58 @@
+package sandbox
+
+import (
+	"errors"
+	"testing"
+
+	"go.rgst.io/jaredallard/cmdexec/v2"
+	"gotest.tools/v3/assert"
+)
+
+// TestUnsafeWorkDir verifies that working directories that would give
+// the agent write access to the home directory or its config are
+// refused, and that others, including look-alike siblings, aren't.
+func TestUnsafeWorkDir(t *testing.T) {
+	tests := []struct {
+		workDir string
+		want    bool
+	}{
+		{workDir: "/", want: true},
+		{workDir: "/home", want: true},
+		{workDir: "/home/u", want: true},
+		{workDir: "/home/u/.config", want: true},
+		{workDir: "/home/u/.config/asbx", want: true},
+		{workDir: "/home/u/Code/x", want: false},
+		{workDir: "/home/u/Code/.x", want: false},
+		{workDir: "/home/user", want: false},
+		{workDir: "/tmp", want: false},
+	}
+
+	for _, tt := range tests {
+		got := unsafeWorkDir(tt.workDir, "/home/u")
+		assert.Equal(t, got, tt.want, "unsafeWorkDir(%q, %q)", tt.workDir, "/home/u")
+	}
+}
+
+// TestProjectRoot verifies that the project root is the top of the git
+// repository the working directory is in.
+func TestProjectRoot(t *testing.T) {
+	cmdexec.UseMockExecutor(t, cmdexec.NewMockExecutor(&cmdexec.MockCommand{
+		Name:   "git",
+		Args:   []string{"-C", "/repo/sub", "rev-parse", "--show-toplevel"},
+		Stdout: []byte("/repo\n"),
+	}))
+
+	assert.Equal(t, projectRoot(t.Context(), "/repo/sub"), "/repo")
+}
+
+// TestProjectRootOutsideRepository verifies that the working directory
+// is the project root when it isn't in a git repository.
+func TestProjectRootOutsideRepository(t *testing.T) {
+	cmdexec.UseMockExecutor(t, cmdexec.NewMockExecutor(&cmdexec.MockCommand{
+		Name: "git",
+		Args: []string{"-C", "/dir", "rev-parse", "--show-toplevel"},
+		Err:  errors.New("exit status 128"),
+	}))
+
+	assert.Equal(t, projectRoot(t.Context(), "/dir"), "/dir")
+}
