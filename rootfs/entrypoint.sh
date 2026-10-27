@@ -60,6 +60,10 @@ setup_common() {
 	# than the docker command.
 	if [[ ${ASBX_PODMAN:-} == 1 ]]; then
 		podman system service --time=0 >"$XDG_RUNTIME_DIR/podman-service.log" 2>&1 &
+	else
+		# Podman can't run without podman_enabled, tell the agent how to
+		# enable it rather than letting it fail.
+		export PATH="/opt/asbx/podman-disabled:$PATH"
 	fi
 
 	if [[ -e ".mise.toml" ]] || [[ -e "mise.toml" ]]; then

@@ -53,6 +53,12 @@ EOF
 
 COPY rootfs/containers.conf /etc/containers/containers.conf
 
+# Stands in for podman and docker when podman_enabled is off, so the
+# agent is told how to turn it on rather than seeing Podman fail. docker
+# needs its own, podman-docker's runs /usr/bin/podman.
+COPY --chmod=0755 rootfs/podman-disabled.sh /opt/asbx/podman-disabled/podman
+RUN ln -s podman /opt/asbx/podman-disabled/docker
+
 # Install Google Chrome for agents to use for browser based testing.
 RUN <<EOF
 	set -euo pipefail

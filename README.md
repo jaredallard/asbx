@@ -188,7 +188,8 @@ testcontainers). Your host's Docker socket isn't mounted, and the
 container gets no more capabilities: Podman nests its containers in
 user namespaces, which needs a seccomp profile that allows the
 syscalls to create them and mount in them. Images are kept in a volume
-per working directory.
+per working directory. Without it, `podman` and `docker` in the
+container print how to enable it instead of running.
 
 Containers inside the container differ from Docker's in a few ways:
 
