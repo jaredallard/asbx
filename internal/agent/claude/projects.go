@@ -77,7 +77,7 @@ func mirrorProjects(host *sandbox.Host, run *docker.Run) error {
 		return err
 	}
 
-	run.Mount(dir, "/home/ubuntu/.claude/projects/"+project, false)
+	run.Mount(dir, containerHome+"/projects/"+project, false)
 
 	// If memory is a symlink, what it points to is mounted at the same
 	// path so it resolves in the container as well.

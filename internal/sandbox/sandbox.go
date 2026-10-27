@@ -372,9 +372,8 @@ func Build(ctx context.Context, host *Host, agent Agent, known []Agent) (*docker
 	run.Env("COLORTERM")
 	run.Mount(filepath.Join(host.Home, ".gitconfig"), ReadOnlyHostDir+"/.gitconfig", true)
 
-	// Tools mise installs persist in volumes per working directory. The
-	// checksum keeps directories with the same name from sharing them.
-	id := fmt.Sprintf("%s-%d", filepath.Base(host.PWD), crc32.ChecksumIEEE([]byte(host.PWD)))
+	// Tools mise installs persist in volumes per working directory.
+	id := host.ID()
 	run.Volume("asbx-" + id + "-mise-shims:/home/ubuntu/.local/share/mise")
 	run.Volume("asbx-" + id + "-mise-state:/home/ubuntu/.local/state/mise")
 	run.Volume("asbx-" + id + "-mise-cache:/home/ubuntu/.cache/mise")

@@ -65,8 +65,19 @@ claude:
   mirror_managed_settings: true
 
   # mirror_projects mirrors the host's project sessions+memory if
-  # enabled. This is mounted RW.
+  # enabled. This is mounted RW. Only applies when home is `host`.
   mirror_projects: true
+
+  # home is where Claude Code's state in the container is kept:
+  #
+  # - `host`: your `~/.claude` configuration is copied in, and nothing
+  #   else outlives the container (except mirror_projects).
+  # - `project`: kept in a Docker volume for this directory, like mise's
+  #   tools. Starts empty, your `~/.claude` isn't used.
+  # - `asbx`: kept in `~/.local/share/asbx/claude`, shared by every
+  #   project that uses `asbx`. Starts empty, your `~/.claude` isn't
+  #   used.
+  home: host
 
 codex:
   # api_key_secret_ref is the 1Password `op://` URL ref to retrieve your

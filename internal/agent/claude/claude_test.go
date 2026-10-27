@@ -127,3 +127,96 @@ func TestMirrorProjectsRelativeMemoryLink(t *testing.T) {
 	err := mirrorProjects(host, &docker.Run{})
 	assert.ErrorContains(t, err, "must be a symlink to an absolute path")
 }
+
+// newHomeHost returns a Host whose claude.home is home, with mirroring
+// the working directory's projects turned on, which only host uses.
+func newHomeHost(t *testing.T, home string) *sandbox.Host {
+	t.Helper()
+
+	return &sandbox.Host{
+		Home:      t.TempDir(),
+		PWD:       "/work/my.repo",
+		ConfigDir: t.TempDir(),
+		Config: &config.Config{Claude: config.Claude{
+			Home:           home,
+			MirrorProjects: true,
+		}},
+	}
+}
+
+// TestConfigureHomeHost verifies that, by default, the host's ~/.claude
+// is mounted for the entrypoint to copy, and the working directory's
+// projects are mirrored.
+func TestConfigureHomeHost(t *testing.T) {
+	for _, home := range []string{"", config.ClaudeHomeHost} {
+		host := newHomeHost(t, home)
+		assert.NilError(t, os.MkdirAll(filepath.Join(host.Home, ".claude"), 0o750))
+		assert.NilError(t, os.WriteFile(filepath.Join(host.Home, ".claude", "settings.json"), nil, 0o600))
+
+		run := &docker.Run{}
+		assert.NilError(t, New().Configure(t.Context(), host, run))
+
+		args := run.Args()
+		assert.DeepEqual(t, mountedClaudeEntries(args), []string{"settings.json"})
+		assert.Assert(t, slices.Contains(args, "ASBX_CLAUDE_HOME=host"), "Configure() args = %q", args)
+		assert.Assert(t, !slices.ContainsFunc(args, isConfigDirEnv), "Configure() args = %q", args)
+		assert.Assert(t, slices.ContainsFunc(args, func(arg string) bool {
+			return strings.Contains(arg, "target="+containerHome+"/projects/-work-my-repo")
+		}), "Configure() args = %q", args)
+	}
+}
+
+// TestConfigureHomeProject verifies that, when claude.home is project,
+// Claude Code's state is kept in a volume for the working directory,
+// and nothing from the host's ~/.claude is mounted.
+func TestConfigureHomeProject(t *testing.T) {
+	host := newHomeHost(t, config.ClaudeHomeProject)
+	assert.NilError(t, os.MkdirAll(filepath.Join(host.Home, ".claude"), 0o750))
+	assert.NilError(t, os.WriteFile(filepath.Join(host.Home, ".claude", "settings.json"), nil, 0o600))
+
+	run := &docker.Run{}
+	assert.NilError(t, New().Configure(t.Context(), host, run))
+
+	args := run.Args()
+	assert.Equal(t, len(mountedClaudeEntries(args)), 0)
+	assert.Assert(t, slices.Contains(args, "asbx-"+host.ID()+"-claude:"+containerHome), "Configure() args = %q", args)
+	assert.Assert(t, slices.Contains(args, "ASBX_CLAUDE_HOME=project"), "Configure() args = %q", args)
+	assert.Assert(t, slices.ContainsFunc(args, isConfigDirEnv), "Configure() args = %q", args)
+	assert.Assert(t, !slices.ContainsFunc(args, func(arg string) bool {
+		return strings.Contains(arg, "/projects/")
+	}), "Configure() mirrored projects, args = %q", args)
+}
+
+// TestConfigureHomeASBX verifies that, when claude.home is asbx, Claude
+// Code's state is kept in a directory asbx owns, only readable by the
+// user, and nothing from the host's ~/.claude is mounted.
+func TestConfigureHomeASBX(t *testing.T) {
+	host := newHomeHost(t, config.ClaudeHomeASBX)
+
+	run := &docker.Run{}
+	assert.NilError(t, New().Configure(t.Context(), host, run))
+
+	dir := filepath.Join(host.Home, ".local", "share", "asbx", "claude")
+	info, err := os.Stat(dir)
+	assert.NilError(t, err)
+	assert.Equal(t, info.Mode().Perm(), os.FileMode(0o700))
+
+	args := run.Args()
+	assert.Equal(t, len(mountedClaudeEntries(args)), 0)
+	assert.Assert(t, slices.Contains(args, "type=bind,source="+dir+",target="+containerHome), "Configure() args = %q", args)
+	assert.Assert(t, slices.Contains(args, "ASBX_CLAUDE_HOME=asbx"), "Configure() args = %q", args)
+	assert.Assert(t, slices.ContainsFunc(args, isConfigDirEnv), "Configure() args = %q", args)
+}
+
+// TestConfigureHomeInvalid verifies that an unknown claude.home is
+// refused rather than falling back to one of the others.
+func TestConfigureHomeInvalid(t *testing.T) {
+	err := New().Configure(t.Context(), newHomeHost(t, "shared"), &docker.Run{})
+	assert.ErrorContains(t, err, `claude.home must be host, project or asbx, not "shared"`)
+}
+
+// isConfigDirEnv reports whether arg sets CLAUDE_CONFIG_DIR to Claude
+// Code's configuration directory in the container.
+func isConfigDirEnv(arg string) bool {
+	return arg == "CLAUDE_CONFIG_DIR="+containerHome
+}

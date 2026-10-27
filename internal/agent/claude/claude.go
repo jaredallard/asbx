@@ -52,6 +52,10 @@ var private = map[string]bool{
 	"ide":             true,
 }
 
+// containerHome is Claude Code's configuration directory in the
+// container.
+const containerHome = "/home/ubuntu/.claude"
+
 // Agent implements [sandbox.Agent] for Claude code.
 type Agent struct{}
 
@@ -125,15 +129,61 @@ func (a *Agent) Configure(_ context.Context, host *sandbox.Host, run *docker.Run
 		}
 	}
 
-	if err := mountConfig(host.Home, run); err != nil {
-		return err
+	// Unset, as a later file can leave it, is the default.
+	home := cfg.Home
+	if home == "" {
+		home = config.ClaudeHomeHost
 	}
 
-	if cfg.MirrorProjects {
-		return mirrorProjects(host, run)
+	// The entrypoint only copies the host's configuration in for host.
+	run.Env("ASBX_CLAUDE_HOME=" + home)
+
+	switch home {
+	case config.ClaudeHomeHost:
+		if err := mountConfig(host.Home, run); err != nil {
+			return err
+		}
+
+		if cfg.MirrorProjects {
+			return mirrorProjects(host, run)
+		}
+
+		return nil
+	case config.ClaudeHomeProject:
+		run.Volume(projectVolume(host) + ":" + containerHome)
+		host.Note("claude's state is kept in the %s volume", projectVolume(host))
+	case config.ClaudeHomeASBX:
+		dir := asbxHome(host.Home)
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return err
+		}
+
+		run.Mount(dir, containerHome, false)
+		host.Note("claude's state is kept in %s, shared by every project using it", dir)
+	default:
+		return fmt.Errorf("claude.home must be %s, %s or %s, not %q",
+			config.ClaudeHomeHost, config.ClaudeHomeProject, config.ClaudeHomeASBX, home)
 	}
+
+	// Claude Code keeps its global state in ~/.claude.json, outside of
+	// ~/.claude, unless it's given a configuration directory, so it's
+	// kept with the rest.
+	run.Env("CLAUDE_CONFIG_DIR=" + containerHome)
 
 	return nil
+}
+
+// projectVolume returns the name of the volume Claude Code's state is
+// kept in for host's working directory, when claude.home is project.
+func projectVolume(host *sandbox.Host) string {
+	return "asbx-" + host.ID() + "-claude"
+}
+
+// asbxHome returns the directory, owned by asbx, Claude Code's state is
+// kept in for the user whose home directory is home, when claude.home
+// is asbx.
+func asbxHome(home string) string {
+	return filepath.Join(home, ".local", "share", "asbx", "claude")
 }
 
 // Secrets returns Claude Code's OAuth token and LiteLLM key. The user

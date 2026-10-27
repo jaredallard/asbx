@@ -107,3 +107,11 @@ func TestWriteDefaultConfigExists(t *testing.T) {
 	assert.NilError(t, err)
 	assert.Equal(t, string(got), "network_host: true\n")
 }
+
+// TestHostID verifies that the working directory's ID is its name and
+// the checksum of its path, which names its volumes, so that it doesn't
+// change and orphan volumes that already exist.
+func TestHostID(t *testing.T) {
+	host := &Host{PWD: "/work/my.repo"}
+	assert.Equal(t, host.ID(), "my.repo-3254611019")
+}

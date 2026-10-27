@@ -107,6 +107,7 @@ claude:
   litellm_token_secret_ref: 'op://"h"/i'
   mirror_managed_settings: true
   mirror_projects: true
+  home: asbx
 codex:
   api_key_secret_ref: op://j/k
 `},
@@ -124,6 +125,7 @@ codex:
 					LiteLLMTokenSecretRef: `op://"h"/i`,
 					MirrorManagedSettings: true,
 					MirrorProjects:        true,
+					Home:                  ClaudeHomeASBX,
 				},
 				Codex: Codex{APIKeySecretRef: "op://j/k"},
 			},
@@ -151,6 +153,11 @@ codex:
 				c.Claude.MirrorProjects = true
 				c.Claude.OAuthTokenSecretRef = "op://d/e/f"
 			}),
+		},
+		{
+			name:  "LaterClaudeHomeOverrides",
+			files: []string{"claude:\n  home: asbx\n", "claude:\n  home: project\n"},
+			want:  defaults(func(c *Config) { c.Claude.Home = ClaudeHomeProject }),
 		},
 		{
 			name:  "LaterAgentOverrides",

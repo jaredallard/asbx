@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -95,6 +96,14 @@ func (h *Host) Warn(format string, args ...any) {
 // the sandbox starts.
 func (h *Host) Note(format string, args ...any) {
 	h.notices = append(h.notices, notice{msg: fmt.Sprintf(format, args...)})
+}
+
+// ID returns the name of the working directory with a checksum of its
+// path, which names what's kept per working directory, such as its
+// volumes. The checksum keeps directories with the same name from
+// sharing them.
+func (h *Host) ID() string {
+	return fmt.Sprintf("%s-%d", filepath.Base(h.PWD), crc32.ChecksumIEEE([]byte(h.PWD)))
 }
 
 // protectPaths mounts each of paths, relative to the working directory,

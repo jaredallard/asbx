@@ -80,10 +80,29 @@ setup_common() {
 	fi
 }
 
-# setup_claude copies the host's Claude Code configuration into place.
+# setup_claude copies the host's Claude Code configuration into place,
+# unless its state is kept by asbx (ASBX_CLAUDE_HOME is project or
+# asbx), where it's only told the working directory is trusted.
 #
 # Usage: setup_claude
 setup_claude() {
+	if [[ ${ASBX_CLAUDE_HOME:-host} != "host" ]]; then
+		# CLAUDE_CONFIG_DIR is set, so its global state is kept in it.
+		local state="$CLAUDE_CONFIG_DIR/.claude.json"
+		if [[ ! -s $state ]]; then
+			echo '{}' >"$state"
+		fi
+
+		if [[ -n ${ASBX_TRUSTED_DIR:-} ]]; then
+			jq --arg dir "$ASBX_TRUSTED_DIR" \
+				'.projects[$dir].hasTrustDialogAccepted = true' \
+				"$state" >"$state.tmp"
+			mv "$state.tmp" "$state"
+		fi
+
+		return
+	fi
+
 	# asbx doesn't mount projects, the current project's sessions and
 	# memory are bind mounted read-write over projects/<slug> when
 	# mirrored.

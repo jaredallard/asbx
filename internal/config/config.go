@@ -94,9 +94,28 @@ type Claude struct {
 	MirrorManagedSettings bool `yaml:"mirror_managed_settings"`
 
 	// MirrorProjects mounts the working directory's Claude sessions and
-	// memory read-write.
+	// memory read-write. It only applies when Home is [ClaudeHomeHost].
 	MirrorProjects bool `yaml:"mirror_projects"`
+
+	// Home is where Claude Code's state in the container is kept, one of
+	// [ClaudeHomeHost], [ClaudeHomeProject] or [ClaudeHomeASBX].
+	Home string `yaml:"home"`
 }
+
+// The values of [Claude.Home].
+const (
+	// ClaudeHomeHost copies the host's ~/.claude configuration into the
+	// container, which doesn't outlive it.
+	ClaudeHomeHost = "host"
+
+	// ClaudeHomeProject keeps Claude Code's state in a volume per
+	// working directory, starting empty.
+	ClaudeHomeProject = "project"
+
+	// ClaudeHomeASBX keeps Claude Code's state in a directory asbx owns,
+	// shared by every project that uses it, starting empty.
+	ClaudeHomeASBX = "asbx"
+)
 
 // Codex is the configuration specific to Codex.
 type Codex struct {
@@ -115,7 +134,10 @@ func Default() Config {
 		ForgejoEnabled: true,
 		GitHubEnabled:  true,
 		//nolint:gosec // Why: these are where the secrets are, not secrets.
-		Claude: Claude{OAuthTokenSecretRef: "op://Private/claude-token/credential"},
+		Claude: Claude{
+			OAuthTokenSecretRef: "op://Private/claude-token/credential",
+			Home:                ClaudeHomeHost,
+		},
 		//nolint:gosec // Why: these are where the secrets are, not secrets.
 		Codex: Codex{APIKeySecretRef: "op://Private/codex-token/credential"},
 	}

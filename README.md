@@ -147,7 +147,8 @@ options are nested under `claude:` and `codex:` maps, as in the example.
 | `claude.oauth_token_secret_ref`   | string | 1Password `op://` ref to read `CLAUDE_CODE_OAUTH_TOKEN` from. When it's the default and the item doesn't exist, asbx offers to create it. `''` passes none.            |
 | `claude.litellm_token_secret_ref` | string | 1Password `op://` ref to read `LITELLM_API_KEY` from.                                                                                                                  |
 | `claude.mirror_managed_settings`  | bool   | Mounts your OS specific managed settings into the container.                                                                                                           |
-| `claude.mirror_projects`          | bool   | Mounts this directory's Claude sessions and memory read-write, so the host and container can resume each other's sessions.                                             |
+| `claude.mirror_projects`          | bool   | Mounts this directory's Claude sessions and memory read-write, so the host and container can resume each other's sessions. Only with `claude.home: host`.              |
+| `claude.home`                     | string | Where Claude's state in the container is kept: `host`, `project` or `asbx`. See [Claude Code](#claude-code). Defaults to `host`.                                       |
 | `codex.api_key_secret_ref`        | string | 1Password `op://` ref to read `OPENAI_API_KEY` from, which Codex is logged in with. When it's the default and the item doesn't exist, asbx offers to create it.        |
 
 ### 1Password CLI
@@ -210,10 +211,20 @@ it's set.
 
 ### Claude Code
 
-Your `~/.claude` configuration is copied into the container, except
-other projects' sessions, memory and prompt history. Set
-`claude.oauth_token_secret_ref` to log in with a token from
-`claude setup-token`.
+Set `claude.oauth_token_secret_ref` to log in with a token from
+`claude setup-token`. Where Claude Code's state in the container is
+kept depends on `claude.home`:
+
+- **`host`** (default): your `~/.claude` configuration is copied into
+  the container, except other projects' sessions, memory and prompt
+  history. Nothing Claude writes outlives the container, except this
+  directory's sessions and memory with `claude.mirror_projects`.
+- **`project`**: kept in a Docker volume for this directory,
+  `asbx-<dir>-<checksum>-claude`, like mise's tools. It starts empty,
+  your `~/.claude` isn't used. Remove the volume to start over.
+- **`asbx`**: kept in `~/.local/share/asbx/claude`, shared by every
+  project that uses `asbx`. It starts empty, your `~/.claude` isn't
+  used. Remove the directory to start over.
 
 ### Codex
 
@@ -292,6 +303,11 @@ What it doesn't protect against:
 - **`claude.mirror_projects`**: when enabled, sessions and memory
   written in the container are read by Claude on the host, so they can
   carry prompt injection.
+- **`claude.home: asbx`**: settings, memory and sessions written by the
+  agent in one project are read by it in every other project that uses
+  `asbx`, so they can carry prompt injection, or settings such as hooks,
+  between them. They're never read by Claude on the host. `project`
+  keeps them to one directory.
 
 ## License
 
