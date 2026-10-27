@@ -110,7 +110,7 @@ jobs:
           unset GITHUB_TOKEN
           goreleaser release --release-notes CHANGELOG.md --clean
         env:
-          GITEA_TOKEN: ${{ github.token }}
+          GITEA_TOKEN: ${{ secrets.PACKAGES_WRITE_FORGEJO_TOKEN }}
           GPG_PASSWORD: ${{ secrets.GPG_PASSWORD }}
           ## <<Stencil::Block(goreleaseEnvVars)>>
           MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
