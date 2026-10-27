@@ -1,12 +1,12 @@
 [tools]
 dprint = "0.64.3"
+golang = "1.27.3"
 golangci-lint = "2.15.0"
 goreleaser = "2.19.0"
 gotestsum = "1.13.0"
 shfmt = "latest"
 svu = "3.4.1"
 git-cliff = "2.14.2"
-go = "1.27.3"
 ## <<Stencil::Block(extraTools)>>
 # Records the README's demo, see the demo task.
 vhs = "0.12.1"
@@ -31,11 +31,19 @@ run = [
 	"golangci-lint fmt",
 	"shfmt -w .",
 	"dprint fmt '**/*.{json,yaml,yml,md,jsonschema.json}'",
+	## <<Stencil::Block(additionalFormatters)>>
+
+	## <</Stencil::Block>>
 ]
 
 [tasks.lint]
 description = "Run linters"
-run = "golangci-lint run"
+run = [
+	"golangci-lint run",
+	## <<Stencil::Block(additionalLinters)>>
+
+	## <</Stencil::Block>>
+]
 
 [tasks.next-version]
 description = """Get the version number that would be released if a release was ran right now.

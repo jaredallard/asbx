@@ -5,10 +5,7 @@ lockfile_version = 3
 [[tools.dprint]]
 version = "0.64.3"
 backend = "aqua:dprint/dprint"
-specifiers = [
-    "0.64.3",
-    "latest",
-]
+specifiers = ["0.64.3"]
 
 [tools.dprint."platforms.linux-arm64"]
 checksum = "sha256:c820bfc67b0cd6f5f0fa4d00ecdcb056944c86030859f5e50151c88d9164b30d"
@@ -352,10 +349,12 @@ backend = "aqua:tsl0922/ttyd"
 specifiers = ["1.7.7"]
 
 [tools.ttyd."platforms.linux-arm64"]
+checksum = "sha256:b38acadd89d1d396a0f5649aa52c539edbad07f4bc7348b27b4f4b7219dd4165"
 url = "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.aarch64"
 url_api = "https://api.github.com/repos/tsl0922/ttyd/releases/assets/159377644"
 
 [tools.ttyd."platforms.linux-arm64-musl"]
+checksum = "sha256:b38acadd89d1d396a0f5649aa52c539edbad07f4bc7348b27b4f4b7219dd4165"
 url = "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.aarch64"
 url_api = "https://api.github.com/repos/tsl0922/ttyd/releases/assets/159377644"
 
@@ -365,10 +364,12 @@ url = "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64"
 url_api = "https://api.github.com/repos/tsl0922/ttyd/releases/assets/159377628"
 
 [tools.ttyd."platforms.linux-x64-musl"]
+checksum = "sha256:8a217c968aba172e0dbf3f34447218dc015bc4d5e59bf51db2f2cd12b7be4f55"
 url = "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64"
 url_api = "https://api.github.com/repos/tsl0922/ttyd/releases/assets/159377628"
 
 [tools.ttyd."platforms.windows-x64"]
+checksum = "sha256:e33a27501b10b96981335bcba938b1145c7f52551a343e72160f00ab71832b37"
 url = "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.win32.exe"
 url_api = "https://api.github.com/repos/tsl0922/ttyd/releases/assets/159377630"
 

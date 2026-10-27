@@ -3,8 +3,8 @@ modules:
     - name: go.rgst.io/rgst-io/stencil-golang
       url: https://git.rgst.io/rgst-io/stencil-golang
       version:
-        commit: e5a1eb817761303ef8112aa0a1bcb90774ec4208
-        tag: v4.5.0
+        commit: 58c3e8bf3b4a0a6df45ddabb4dcc9fb527bb4aee
+        tag: v4.6.0
 files:
     - name: .cliff.toml
       template: .cliff.toml.tpl
@@ -84,6 +84,11 @@ files:
       template: LICENSE.tpl
       module: go.rgst.io/rgst-io/stencil-golang
       status: managed
+    - name: cmd/asbx-op/asbx-op.go
+      template: cmd/$name/name.go.tpl
+      module: go.rgst.io/rgst-io/stencil-golang
+      status: unmanaged
+      status_reason: Template called file.Static and output already existed
     - name: cmd/asbx/asbx.go
       template: cmd/$name/name.go.tpl
       module: go.rgst.io/rgst-io/stencil-golang

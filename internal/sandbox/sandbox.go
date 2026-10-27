@@ -45,7 +45,7 @@ import (
 
 const (
 	// imageRepository is the repository of the image the sandbox runs.
-	imageRepository = "git.rgst.io/jaredallard/asbx"
+	imageRepository = "ghcr.io/jaredallard/asbx"
 
 	// Entrypoint is the command the sandbox runs, with the agent's name
 	// and then its arguments.
