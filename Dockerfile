@@ -19,7 +19,8 @@ EOF
 RUN <<EOF
 	set -euo pipefail
 
-	apt-get install -y sudo jq curl wget net-tools dnsutils git openssh-client build-essential
+	apt-get install -y sudo jq curl wget net-tools dnsutils git openssh-client build-essential \
+		zip unzip 7zip
 EOF
 
 # Where Podman keeps its runtime state and API socket.
