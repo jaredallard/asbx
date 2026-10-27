@@ -19,7 +19,7 @@ env:
 
 jobs:
   rebuild:
-    runs-on: ubuntu-multiarch-latest
+    runs-on: ubuntu-latest-multiarch
     steps:
       - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4

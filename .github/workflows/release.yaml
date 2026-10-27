@@ -38,7 +38,7 @@ env:
 
 jobs:
   release:
-    runs-on: ubuntu-multiarch-latest
+    runs-on: ubuntu-latest-multiarch
     steps:
       ## <<Stencil::Block(releaseSetup)>>
       # Caching to type=gha needs a docker-container buildx builder, and
