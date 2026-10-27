@@ -95,9 +95,14 @@ func TestMirrorProjectsPinsMemoryLink(t *testing.T) {
 	target := t.TempDir()
 	host, memory := newProjectHost(t, target)
 
+	// The temporary directory can itself be behind a symlink (/var on
+	// macOS), and it's the resolved path that's mounted.
+	resolved, err := filepath.EvalSymlinks(target)
+	assert.NilError(t, err)
+
 	run := &docker.Run{}
 	assert.NilError(t, mirrorProjects(host, run))
-	assert.Assert(t, slices.Contains(run.Args(), target+":"+target), "mirrorProjects() args = %q", run.Args())
+	assert.Assert(t, slices.Contains(run.Args(), resolved+":"+target), "mirrorProjects() args = %q", run.Args())
 
 	pin, err := os.ReadFile(filepath.Join(host.ConfigDir, "memory-links", "-work-my-repo"))
 	assert.NilError(t, err)
