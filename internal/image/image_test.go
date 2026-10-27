@@ -171,7 +171,8 @@ func noWarnings(t *testing.T) func(string, ...any) {
 }
 
 // TestResolve verifies that a signed image is resolved to its digest,
-// pulled when docker doesn't have it, and recorded to fall back to.
+// pulled, with Pulling told, when docker doesn't have it, and recorded
+// to fall back to.
 func TestResolve(t *testing.T) {
 	for _, present := range []bool{false, true} {
 		t.Run(fmt.Sprintf("present=%v", present), func(t *testing.T) {
@@ -182,10 +183,19 @@ func TestResolve(t *testing.T) {
 
 			mockDocker(t, d.String(), present)
 
+			var pulled []string
 			r := newResolver(t, pub)
+			r.Pulling = func(ref string) { pulled = append(pulled, ref) }
+
 			got, err := r.Resolve(t.Context(), repository, testTag, noWarnings(t))
 			assert.NilError(t, err)
 			assert.Equal(t, got, d.String())
+
+			var want []string
+			if !present {
+				want = []string{d.String()}
+			}
+			assert.DeepEqual(t, pulled, want)
 
 			last, err := r.load(testTag)
 			assert.NilError(t, err)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -12,6 +13,7 @@ import (
 
 	"git.rgst.io/jaredallard/asbx/internal/config"
 	"git.rgst.io/jaredallard/asbx/internal/docker"
+	"git.rgst.io/jaredallard/asbx/internal/term"
 	"go.rgst.io/jaredallard/cmdexec/v2"
 	"gotest.tools/v3/assert"
 )
@@ -481,4 +483,16 @@ func TestPodmanSeccompProfileNetfilter(t *testing.T) {
 	for _, family := range []uint64{1, 2, 10, 15, 17, 37} {
 		assert.Assert(t, allows(family, 0), "address family %d isn't allowed", family)
 	}
+}
+
+// TestResolveImageLocal verifies that the image built locally is run by
+// its tag, without asking the registry for it, since it's never pushed.
+func TestResolveImageLocal(t *testing.T) {
+	saved := imageTag
+	imageTag = localTag
+	t.Cleanup(func() { imageTag = saved })
+
+	ref, err := resolveImage(t.Context(), &term.Terminal{Out: io.Discard})
+	assert.NilError(t, err)
+	assert.Equal(t, ref, imageRepository+":"+localTag)
 }

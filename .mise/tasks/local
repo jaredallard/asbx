@@ -16,7 +16,7 @@ trap 'rm -rf "$ctx"' EXIT
 mkdir -p "$ctx/linux/$arch"
 GOOS=linux GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -o "$ctx/linux/$arch/asbx-op" ./cmd/asbx-op
 cp -r Dockerfile rootfs "$ctx/"
-docker build --platform "linux/$arch" -t "git.rgst.io/jaredallard/asbx:$tag" "$ctx"
+docker build --platform "linux/$arch" -t "ghcr.io/jaredallard/asbx:$tag" "$ctx"
 rm -rf "$ctx"
 
 go build -trimpath -o ./bin/asbx \

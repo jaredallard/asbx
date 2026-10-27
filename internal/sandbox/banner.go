@@ -219,6 +219,18 @@ func step(t *term.Terminal, msg string) {
 	fmt.Fprint(t.Out, t.Render(fmt.Sprintf("  %s   %s\n", logoStyle.Render(symbolStep), term.Escape(msg))))
 }
 
+// warn shows the user at t a warning about what asbx is doing after the
+// banner, as msg, lined up like a step. Otherwise it's shown as a plain
+// line, like the banner's notices, so it isn't lost.
+func warn(t *term.Terminal, msg string) {
+	if !t.Interactive {
+		fmt.Fprintf(t.Out, "Warning: %s\n", term.Escape(msg))
+		return
+	}
+
+	fmt.Fprint(t.Out, t.Render(fmt.Sprintf("  %s\n", warningStyle.Render(symbolWarning+"   "+term.Escape(msg)))))
+}
+
 // starting shows the user at t that agent is starting, as the
 // last step, set apart from what docker and the agent show after.
 func starting(t *term.Terminal, agent string) {

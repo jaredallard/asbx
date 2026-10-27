@@ -61,6 +61,10 @@ type Resolver struct {
 
 	// RemoteOptions are passed to every request to the registry.
 	RemoteOptions []remote.Option
+
+	// Pulling, when set, is called before docker pulls the image ref, so
+	// the user can be told why it's taking a while.
+	Pulling func(ref string)
 }
 
 // New returns a Resolver for the images asbx runs, keeping its state in
@@ -136,6 +140,10 @@ func (r *Resolver) latest(ctx context.Context, repository, tag string) (string, 
 	}
 
 	if !has(ctx, ref) {
+		if r.Pulling != nil {
+			r.Pulling(ref)
+		}
+
 		if err := pull(ctx, ref); err != nil {
 			return "", fmt.Errorf("failed to pull %s: %w", ref, err)
 		}

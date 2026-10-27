@@ -77,6 +77,11 @@ var podmanSeccompProfile []byte
 // rebuilt daily, so it's resolved to a verified digest on every run.
 var imageTag = "latest"
 
+// localTag is the tag of the image mise's local task builds from a
+// checkout. It's never pushed, so there's no signature to verify, and
+// it's run as docker has it.
+const localTag = "local"
+
 // version returns the version of asbx, which is the tag of the image it
 // runs. Builds that aren't releases are "dev", with the commit they were
 // built from when it's known.
@@ -414,6 +419,26 @@ func Build(ctx context.Context, host *Host, agent Agent, known []Agent) (*docker
 	return run, nil
 }
 
+// resolveImage returns the image the sandbox runs, verified as for
+// [image.Resolver.Resolve], showing the user at t when it's pulled and
+// anything they're warned about. The image built locally isn't.
+func resolveImage(ctx context.Context, t *term.Terminal) (string, error) {
+	if imageTag == localTag {
+		return imageRepository + ":" + localTag, nil
+	}
+
+	resolver, err := image.New()
+	if err != nil {
+		return "", err
+	}
+
+	resolver.Pulling = func(string) { step(t, "pulling image") }
+
+	return resolver.Resolve(ctx, imageRepository, imageTag, func(format string, args ...any) {
+		warn(t, fmt.Sprintf(format, args...))
+	})
+}
+
 // Run runs agent in a sandbox for host with args, attached to the
 // terminal, until it exits. known are as for [Build]. A non-zero exit is
 // returned as a [docker.ExitError].
@@ -433,23 +458,18 @@ func Run(ctx context.Context, host *Host, agent Agent, known []Agent, args []str
 		return err
 	}
 
-	// Before the banner, so falling back to an older image is warned
-	// about in it, and an image that can't be verified fails before
-	// 1Password is asked for anything.
-	resolver, err := image.New()
-	if err != nil {
-		return err
-	}
-
-	ref, err := resolver.Resolve(ctx, imageRepository, imageTag, host.Warn)
-	if err != nil {
-		return err
-	}
-
-	// The banner is shown first, so the user knows what's starting when
-	// 1Password asks to be unlocked, or to create a secret.
+	// The banner is shown first, so the user knows what's starting while
+	// the image is pulled, and when 1Password asks to be unlocked, or to
+	// create a secret.
 	t := term.New()
 	announce(t, host, agent, run, allow, secrets)
+
+	// Before the secrets, so an image that can't be verified fails before
+	// 1Password is asked for anything.
+	ref, err := resolveImage(ctx, t)
+	if err != nil {
+		return err
+	}
 
 	if err := addSecrets(ctx, t, run, secrets...); err != nil {
 		return err

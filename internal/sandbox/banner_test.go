@@ -227,3 +227,25 @@ func TestGoodbye(t *testing.T) {
 		})
 	}
 }
+
+// TestWarn verifies that a warning after the banner is lined up like a
+// step when there's a terminal to show it at, and is a plain line
+// otherwise, so it isn't lost.
+func TestWarn(t *testing.T) {
+	tests := []struct {
+		name        string
+		interactive bool
+		want        string
+	}{
+		{name: "Interactive", interactive: true, want: "  ⚠   couldn't get the latest image\n"},
+		{name: "NotInteractive", want: "Warning: couldn't get the latest image\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var out strings.Builder
+			warn(&term.Terminal{Out: &out, Interactive: tt.interactive}, "couldn't get the latest image")
+			assert.Equal(t, out.String(), tt.want)
+		})
+	}
+}
