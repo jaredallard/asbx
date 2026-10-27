@@ -113,7 +113,6 @@ jobs:
           GITEA_TOKEN: ${{ github.token }}
           GPG_PASSWORD: ${{ secrets.GPG_PASSWORD }}
           ## <<Stencil::Block(goreleaseEnvVars)>>
-          GPG_PASSWORD: ${{ secrets.GPG_PASSWORD }}
           MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
           MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
           MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
