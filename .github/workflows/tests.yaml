@@ -21,7 +21,7 @@ env:
 jobs:
   gotest:
     name: go test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-multiarch-latest
     steps:
       - uses: actions/checkout@v7
       - uses: jdx/mise-action@v5
@@ -51,7 +51,7 @@ jobs:
 
   golangci-lint:
     name: golangci-lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-multiarch-latest
     steps:
       - uses: actions/checkout@v7
       - uses: jdx/mise-action@v5

@@ -250,6 +250,13 @@ limitations:
 - If project memory is symlinked, it will be pinned when first read to
   prevent the agent from mutating it and asbx feed it through on next
   run.
+- Only runs images signed with asbx's key. A release's image is rebuilt
+  daily, under the same tag, to pick up security fixes, so on every run
+  asbx looks up the tag, verifies the image's signature and runs it by
+  digest. If that fails, such as when offline, it warns and runs the
+  last image it verified, if Docker still has it. You can verify an
+  image yourself with
+  `cosign verify --key internal/image/embed/cosign.pub --insecure-ignore-tlog ghcr.io/jaredallard/asbx:<version>`.
 
 What it doesn't protect against:
 

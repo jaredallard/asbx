@@ -1,0 +1,58 @@
+name: rebuild-image
+
+# Rebuilds the latest release's image daily, so it picks up the latest
+# base image and packages, such as security fixes, between releases.
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+env:
+  # When on VCS providers other than Github (e.g., forgejo), this is
+  # used to reflect a Github Token that actually has access to Github,
+  # unlike the token provided by act. See release.yaml.
+  REAL_GITHUB_TOKEN: ${{ secrets.GH_PACKAGES_WRITE }}
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-multiarch-latest
+    steps:
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      # The scripts are main's, the image is built from the release.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: jdx/mise-action@v5
+        with:
+          github_token: ${{ env.REAL_GITHUB_TOKEN }}
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ env.REAL_GITHUB_TOKEN }}
+      - name: Check out the latest release
+        id: release
+        run: |-
+          # Release candidates aren't rebuilt, they're replaced.
+          tag=$(git tag -l 'v*' --sort=-v:refname | grep -v -- '-rc\.' | head -n 1)
+          if [[ -z "$tag" ]]; then
+            echo "error: no release to rebuild" >&2
+            exit 1
+          fi
+
+          git worktree add --detach "$RUNNER_TEMP/release" "$tag"
+          echo "tag=$tag" >>"$GITHUB_OUTPUT"
+          echo "dir=$RUNNER_TEMP/release" >>"$GITHUB_OUTPUT"
+      - name: Rebuild, push and sign the image
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        run: |-
+          ./.github/scripts/rebuild-image.sh "${{ steps.release.outputs.dir }}" "${{ steps.release.outputs.tag }}"

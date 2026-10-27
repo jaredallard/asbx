@@ -38,6 +38,7 @@ import (
 	"sync"
 
 	"git.rgst.io/jaredallard/asbx/internal/docker"
+	"git.rgst.io/jaredallard/asbx/internal/image"
 	"git.rgst.io/jaredallard/asbx/internal/opbridge"
 	"git.rgst.io/jaredallard/asbx/internal/term"
 	"go.rgst.io/jaredallard/cmdexec/v2"
@@ -72,8 +73,8 @@ var podmanSeccompProfile []byte
 
 // imageTag is the tag of the image the sandbox runs. Releases set it to
 // their own tag with -ldflags, so asbx runs the image released with it,
-// whose entrypoint and asbx-op match it, rather than whatever :latest
-// was last pulled.
+// whose entrypoint and asbx-op match it, rather than :latest. It's
+// rebuilt daily, so it's resolved to a verified digest on every run.
 var imageTag = "latest"
 
 // version returns the version of asbx, which is the tag of the image it
@@ -432,6 +433,19 @@ func Run(ctx context.Context, host *Host, agent Agent, known []Agent, args []str
 		return err
 	}
 
+	// Before the banner, so falling back to an older image is warned
+	// about in it, and an image that can't be verified fails before
+	// 1Password is asked for anything.
+	resolver, err := image.New()
+	if err != nil {
+		return err
+	}
+
+	ref, err := resolver.Resolve(ctx, imageRepository, imageTag, host.Warn)
+	if err != nil {
+		return err
+	}
+
 	// The banner is shown first, so the user knows what's starting when
 	// 1Password asks to be unlocked, or to create a secret.
 	t := term.New()
@@ -443,10 +457,9 @@ func Run(ctx context.Context, host *Host, agent Agent, known []Agent, args []str
 
 	starting(t, agent.Name())
 
-	image := imageRepository + ":" + imageTag
 	cmd := append([]string{Entrypoint, agent.Name()}, args...)
 	if allow.Empty() {
-		err := docker.Exec(ctx, run, image, cmd)
+		err := docker.Exec(ctx, run, ref, cmd)
 		goodbye(t, err)
 
 		return err
@@ -460,7 +473,7 @@ func Run(ctx context.Context, host *Host, agent Agent, known []Agent, args []str
 		opbridge.Run(bridgeCtx, run.Name(), allow)
 	})
 
-	err = docker.Exec(ctx, run, image, cmd)
+	err = docker.Exec(ctx, run, ref, cmd)
 	stopBridge()
 	wg.Wait()
 

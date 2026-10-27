@@ -25,7 +25,7 @@ env:
   # unlike the token provided by act.
   #
   ## <<Stencil::Block(forgejoGithubToken)>>
-  REAL_GITHUB_TOKEN: ${{ github.token }}
+  REAL_GITHUB_TOKEN: ${{ secrets.GH_PACKAGES_WRITE }}
   ## <</Stencil::Block>>
 
   # Forgejo's Action token does not have permissions to write to the
@@ -38,7 +38,7 @@ env:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-multiarch-latest
     steps:
       ## <<Stencil::Block(releaseSetup)>>
       # Caching to type=gha needs a docker-container buildx builder, and
@@ -118,4 +118,6 @@ jobs:
           MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
           MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
           MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
           ## <</Stencil::Block>>
