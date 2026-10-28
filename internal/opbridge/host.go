@@ -19,6 +19,7 @@ package opbridge
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net/rpc"
 
@@ -109,9 +110,10 @@ func (s *Service) ListItems(args *ListArgs, reply *[]onepassword.Item) error {
 
 // Run serves the bridge in container until ctx is canceled, with the
 // host's op, which only reads refs allow allows and only lists items
-// with a field it allows.
-func Run(ctx context.Context, container string, allow *Allowlist) {
-	stdiobridge.Run(ctx, container, []string{"asbx-op", "bridge"}, maxRequest, func(srv *rpc.Server) error {
+// with a field it allows. The container's calls are inside TLS, as
+// tlsConfig describes it.
+func Run(ctx context.Context, container string, tlsConfig *tls.Config, allow *Allowlist) {
+	stdiobridge.Run(ctx, container, []string{"asbx-op", "bridge"}, tlsConfig, maxRequest, func(srv *rpc.Server) error {
 		return srv.RegisterName(serviceName, NewService(ctx, allow, hostOP{}))
 	})
 }

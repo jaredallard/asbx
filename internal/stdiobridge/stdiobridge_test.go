@@ -18,10 +18,13 @@
 package stdiobridge
 
 import (
+	"bytes"
 	"context"
+	"crypto/tls"
 	"errors"
 	"net"
 	"net/rpc"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -64,10 +67,24 @@ type bridge struct {
 	served, bridged chan error
 }
 
+// newSession returns a session that the calls of the test use the key
+// of.
+func newSession(t *testing.T) *Session {
+	t.Helper()
+
+	session, err := NewSession()
+	assert.NilError(t, err)
+	t.Setenv(KeyEnv, session.Env())
+
+	return session
+}
+
 // start serves an [Echo] with limit through a bridge, until the test
 // ends. Closing the host ends both ends.
 func start(t *testing.T, limit int64, echo *Echo) *bridge {
 	t.Helper()
+
+	session := newSession(t)
 
 	b := &bridge{
 		socket:  filepath.Join(t.TempDir(), "bridge.sock"),
@@ -79,7 +96,7 @@ func start(t *testing.T, limit int64, echo *Echo) *bridge {
 	b.host = host
 
 	go func() {
-		b.served <- Serve(t.Context(), host, limit, func(srv *rpc.Server) error {
+		b.served <- Serve(t.Context(), host, session.ServerConfig(), limit, func(srv *rpc.Server) error {
 			return srv.RegisterName("Echo", echo)
 		})
 	}()
@@ -158,11 +175,12 @@ func TestHostCloseStopsBridge(t *testing.T) {
 // bridge listens waits for it, since the host starts it just after the
 // container.
 func TestCallWaitsForBridge(t *testing.T) {
+	session := newSession(t)
 	socket := filepath.Join(t.TempDir(), "late.sock")
 	host, container := net.Pipe()
 
 	go func() {
-		_ = Serve(t.Context(), host, 1<<20, func(srv *rpc.Server) error { //nolint:errcheck // Why: ends with the test.
+		_ = Serve(t.Context(), host, session.ServerConfig(), 1<<20, func(srv *rpc.Server) error { //nolint:errcheck // Why: ends with the test.
 			return srv.RegisterName("Echo", &Echo{})
 		})
 	}()
@@ -190,4 +208,125 @@ func TestCallCanceled(t *testing.T) {
 
 	err := Call(ctx, socket, "Echo.Wait", &Empty{}, &Empty{})
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
+}
+
+// tapped is a connection that records what's written to it.
+type tapped struct {
+	net.Conn
+	mu      *sync.Mutex
+	written *bytes.Buffer
+}
+
+// Write implements [net.Conn].
+func (c tapped) Write(p []byte) (int, error) {
+	c.mu.Lock()
+	c.written.Write(p)
+	c.mu.Unlock()
+
+	return c.Conn.Write(p)
+}
+
+// TestCallRejectsOtherSessions verifies that the host only answers
+// clients that hold its own session's key.
+func TestCallRejectsOtherSessions(t *testing.T) {
+	socket := start(t, 1<<20, &Echo{}).socket
+
+	other, err := NewSession()
+	assert.NilError(t, err)
+
+	otherConfig, err := ClientConfig(other.Env())
+	assert.NilError(t, err)
+
+	noCert := otherConfig.Clone()
+	noCert.Certificates = nil
+
+	// The host's own key, but without its certificate.
+	own, err := ClientConfig(os.Getenv(KeyEnv))
+	assert.NilError(t, err)
+
+	ownNoCert := own.Clone()
+	ownNoCert.Certificates = nil
+
+	tests := []struct {
+		name   string
+		config *tls.Config
+	}{
+		{name: "another session's key", config: otherConfig},
+		{name: "no certificate", config: ownNoCert},
+		{name: "another session's host and no certificate", config: noCert},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got []byte
+			err := CallTLS(t.Context(), socket, tt.config, "Echo.Say", &[]byte{1}, &got)
+			assert.Assert(t, err != nil, "the call succeeded")
+		})
+	}
+}
+
+// TestCallIsEncrypted verifies that what the bridge relays can't be
+// read, since it isn't trusted with the call.
+func TestCallIsEncrypted(t *testing.T) {
+	session := newSession(t)
+	socket := filepath.Join(t.TempDir(), "tap.sock")
+	host, container := net.Pipe()
+
+	var mu sync.Mutex
+	seen := &bytes.Buffer{}
+	go func() {
+		_ = Serve(t.Context(), host, session.ServerConfig(), 1<<20, func(srv *rpc.Server) error { //nolint:errcheck // Why: ends with the test.
+			return srv.RegisterName("Echo", &Echo{})
+		})
+	}()
+
+	// The bridge's end, so that all it relays is recorded.
+	go func() {
+		_ = Bridge(t.Context(), tapped{Conn: container, mu: &mu, written: seen}, socket) //nolint:errcheck // Why: ends with the test.
+	}()
+
+	secret := []byte("correct horse battery staple")
+
+	var got []byte
+	assert.NilError(t, Call(t.Context(), socket, "Echo.Say", &secret, &got))
+	assert.DeepEqual(t, got, secret)
+	mu.Lock()
+	defer mu.Unlock()
+
+	assert.Assert(t, !bytes.Contains(seen.Bytes(), secret), "the bridge saw the reply in plaintext")
+}
+
+// TestPlaintextClientIsDropped verifies that a client that doesn't
+// speak TLS gets no answer and doesn't hold up the host.
+func TestPlaintextClientIsDropped(t *testing.T) {
+	b := start(t, 1<<20, &Echo{})
+
+	conn, err := dial(t.Context(), b.socket)
+	assert.NilError(t, err)
+	defer conn.Close()
+
+	_, err = conn.Write([]byte("not tls at all, but long enough to be a record header"))
+	assert.NilError(t, err)
+
+	assert.NilError(t, conn.SetReadDeadline(time.Now().Add(5*time.Second)))
+
+	// An alert at most, which isn't an rpc answer.
+	buf := make([]byte, 1<<10)
+	n, _ := conn.Read(buf) //nolint:errcheck // Why: closing or a failure are both fine.
+	assert.Assert(t, !bytes.Contains(buf[:n], []byte("Echo")), "plaintext got an answer")
+
+	var got []byte
+	assert.NilError(t, Call(t.Context(), b.socket, "Echo.Say", &[]byte{3}, &got))
+}
+
+// TestClientConfigErrors verifies that a shim without a usable key
+// fails rather than talking without one.
+func TestClientConfigErrors(t *testing.T) {
+	for _, value := range []string{"", "%%%", "aGVsbG8="} {
+		_, err := ClientConfig(value)
+		assert.Assert(t, err != nil, "ClientConfig(%q) succeeded", value)
+	}
+
+	t.Setenv(KeyEnv, "")
+	err := Call(t.Context(), "/nonexistent.sock", "Echo.Say", &Empty{}, &Empty{})
+	assert.ErrorContains(t, err, KeyEnv)
 }

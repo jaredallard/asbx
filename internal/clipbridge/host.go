@@ -19,6 +19,7 @@ package clipbridge
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net/rpc"
@@ -118,9 +119,10 @@ func (s *Service) Types(_ *stdiobridge.Empty, reply *[]string) error {
 }
 
 // Run serves the bridge in container until ctx is canceled, with cb,
-// doing what mode allows.
-func Run(ctx context.Context, container, mode string, cb Clipboard) {
-	stdiobridge.Run(ctx, container, []string{"asbx-clip", "bridge"}, maxRequest, func(srv *rpc.Server) error {
+// doing what mode allows. The container's calls are inside TLS, as
+// tlsConfig describes it.
+func Run(ctx context.Context, container, mode string, tlsConfig *tls.Config, cb Clipboard) {
+	stdiobridge.Run(ctx, container, []string{"asbx-clip", "bridge"}, tlsConfig, maxRequest, func(srv *rpc.Server) error {
 		return srv.RegisterName(serviceName, NewService(ctx, mode, cb))
 	})
 }

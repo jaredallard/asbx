@@ -19,6 +19,7 @@ package stdiobridge
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -132,14 +133,33 @@ func dial(ctx context.Context, socket string) (net.Conn, error) {
 }
 
 // Call calls the rpc method on the host through the bridge at socket,
-// with args, and sets reply to its answer. The host's error is returned
-// as is.
+// with args, and sets reply to its answer, as [CallTLS] does with the
+// key in [KeyEnv]. The host's error is returned as is.
 func Call(ctx context.Context, socket, method string, args, reply any) error {
-	conn, err := dial(ctx, socket)
+	tlsConfig, err := ClientConfig(os.Getenv(KeyEnv))
 	if err != nil {
 		return err
 	}
+
+	return CallTLS(ctx, socket, tlsConfig, method, args, reply)
+}
+
+// CallTLS calls the rpc method on the host through the bridge at
+// socket, with args, and sets reply to its answer. The call is inside
+// TLS, as tlsConfig describes it, so that the bridge can't read it. The
+// host's error is returned as is.
+func CallTLS(ctx context.Context, socket string, tlsConfig *tls.Config, method string, args, reply any) error {
+	raw, err := dial(ctx, socket)
+	if err != nil {
+		return err
+	}
+
+	conn := tls.Client(raw, tlsConfig)
 	defer conn.Close()
+
+	if err := conn.HandshakeContext(ctx); err != nil {
+		return fmt.Errorf("the asbx bridge didn't answer: %w", err)
+	}
 
 	client := rpc.NewClient(conn)
 	defer client.Close()

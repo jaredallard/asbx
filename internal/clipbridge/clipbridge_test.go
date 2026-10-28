@@ -126,9 +126,14 @@ func TestBridgeRoundTrip(t *testing.T) {
 	cb := &fake{}
 	socket := filepath.Join(t.TempDir(), "clip.sock")
 
+	session, err := stdiobridge.NewSession()
+	assert.NilError(t, err)
+	t.Setenv(stdiobridge.KeyEnv, session.Env())
+
 	hostConn, bridgeConn := net.Pipe()
 	go func() {
-		_ = stdiobridge.Serve(t.Context(), hostConn, maxRequest, func(srv *rpc.Server) error { //nolint:errcheck // Why: ends with the test.
+		//nolint:errcheck // Why: ends with the test.
+		_ = stdiobridge.Serve(t.Context(), hostConn, session.ServerConfig(), maxRequest, func(srv *rpc.Server) error {
 			return srv.RegisterName(serviceName, NewService(t.Context(), config.ClipboardCopyPaste, cb))
 		})
 	}()

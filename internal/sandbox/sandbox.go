@@ -24,6 +24,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	_ "embed"
 	"errors"
 	"fmt"
@@ -42,6 +43,7 @@ import (
 	"git.rgst.io/jaredallard/asbx/internal/docker"
 	"git.rgst.io/jaredallard/asbx/internal/image"
 	"git.rgst.io/jaredallard/asbx/internal/opbridge"
+	"git.rgst.io/jaredallard/asbx/internal/stdiobridge"
 	"git.rgst.io/jaredallard/asbx/internal/term"
 	"go.rgst.io/jaredallard/cmdexec/v2"
 )
@@ -511,6 +513,21 @@ func Run(ctx context.Context, host *Host, agent Agent, known []Agent, args []str
 		return err
 	}
 
+	cb := hostClipboard(host.Config.Clipboard)
+
+	// Only for the container and this host to know, so it's made after
+	// the banner, which lists the secrets, and never written anywhere.
+	var tlsConfig *tls.Config
+	if !allow.Empty() || cb != nil {
+		session, err := stdiobridge.NewSession()
+		if err != nil {
+			return err
+		}
+
+		run.Secret(stdiobridge.KeyEnv, session.Env())
+		tlsConfig = session.ServerConfig()
+	}
+
 	starting(t, agent.Name())
 
 	cmd := append([]string{Entrypoint, agent.Name()}, args...)
@@ -521,13 +538,13 @@ func Run(ctx context.Context, host *Host, agent Agent, known []Agent, args []str
 	var wg sync.WaitGroup
 	if !allow.Empty() {
 		wg.Go(func() {
-			opbridge.Run(bridgeCtx, run.Name(), allow)
+			opbridge.Run(bridgeCtx, run.Name(), tlsConfig, allow)
 		})
 	}
 
-	if cb := hostClipboard(host.Config.Clipboard); cb != nil {
+	if cb != nil {
 		wg.Go(func() {
-			clipbridge.Run(bridgeCtx, run.Name(), host.Config.Clipboard, cb)
+			clipbridge.Run(bridgeCtx, run.Name(), host.Config.Clipboard, tlsConfig, cb)
 		})
 	}
 

@@ -154,12 +154,16 @@ func TestBridge(t *testing.T) {
 	}
 	socket := filepath.Join(t.TempDir(), "op.sock")
 
+	session, err := stdiobridge.NewSession()
+	assert.NilError(t, err)
+	t.Setenv(stdiobridge.KeyEnv, session.Env())
+
 	// The bridge's stdio, as the host and the bridge see it.
 	hostConn, bridgeConn := net.Pipe()
 
 	served := make(chan error, 1)
 	go func() {
-		served <- stdiobridge.Serve(t.Context(), hostConn, maxRequest, func(srv *rpc.Server) error {
+		served <- stdiobridge.Serve(t.Context(), hostConn, session.ServerConfig(), maxRequest, func(srv *rpc.Server) error {
 			return srv.RegisterName(serviceName, NewService(t.Context(), allow, op))
 		})
 	}()

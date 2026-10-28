@@ -24,11 +24,13 @@
 // holds those, so nothing else on the host can reach the services. The
 // bridge listens on a Unix socket inside the container, and each
 // client that connects to it gets a yamux stream to the host, which
-// serves it with net/rpc and gob.
+// serves it with net/rpc and gob, inside TLS that only the container's
+// shims have the key for, so the bridge only ever relays ciphertext.
 package stdiobridge
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"io"
 	"net"
@@ -44,6 +46,10 @@ import (
 // retryInterval is how long Run waits between checking that the
 // container is running and restarting the bridge.
 const retryInterval = 250 * time.Millisecond
+
+// handshakeTimeout is how long a client has to finish its TLS
+// handshake, so that one that never does can't hold a stream open.
+const handshakeTimeout = 5 * time.Second
 
 // Empty is the argument or reply of an rpc method that has none.
 type Empty struct{}
@@ -66,11 +72,31 @@ func Stdio() io.ReadWriteCloser {
 	}{os.Stdin, os.Stdout}
 }
 
+// handshake completes the TLS handshake of conn, which is over stream,
+// within [handshakeTimeout].
+func handshake(stream net.Conn, conn *tls.Conn) error {
+	if err := stream.SetDeadline(time.Now().Add(handshakeTimeout)); err != nil {
+		return err
+	}
+
+	if err := conn.Handshake(); err != nil {
+		return err
+	}
+
+	return stream.SetDeadline(time.Time{})
+}
+
 // serveStream serves one client's rpc calls on stream, with the
-// services register adds, until it closes. Reading more than limit
-// bytes ends it.
-func serveStream(stream net.Conn, limit int64, register func(*rpc.Server) error) {
-	defer stream.Close()
+// services register adds, until it closes. The client has to prove it
+// holds the session's key, which tlsConfig is for. Reading more than
+// limit bytes ends it.
+func serveStream(stream net.Conn, tlsConfig *tls.Config, limit int64, register func(*rpc.Server) error) {
+	conn := tls.Server(stream, tlsConfig)
+	defer conn.Close()
+
+	if err := handshake(stream, conn); err != nil {
+		return
+	}
 
 	srv := rpc.NewServer()
 	if err := register(srv); err != nil {
@@ -83,14 +109,15 @@ func serveStream(stream net.Conn, limit int64, register func(*rpc.Server) error)
 		io.Reader
 		io.Writer
 		io.Closer
-	}{io.LimitReader(stream, limit), stream, stream})
+	}{io.LimitReader(conn, limit), conn, conn})
 }
 
 // Serve serves the rpc calls of every client that the bridge on rwc
-// relays, until rwc is closed or ctx is canceled. register adds the
-// services to the [rpc.Server] of each client, which can't read more
-// than limit bytes.
-func Serve(ctx context.Context, rwc io.ReadWriteCloser, limit int64, register func(*rpc.Server) error) error {
+// relays, until rwc is closed or ctx is canceled. Each client has to
+// prove it holds the session's key, which tlsConfig is for. register
+// adds the services to the [rpc.Server] of each client, which can't read
+// more than limit bytes.
+func Serve(ctx context.Context, rwc io.ReadWriteCloser, tlsConfig *tls.Config, limit int64, register func(*rpc.Server) error) error {
 	session, err := yamux.Server(rwc, config())
 	if err != nil {
 		return err
@@ -117,7 +144,7 @@ func Serve(ctx context.Context, rwc io.ReadWriteCloser, limit int64, register fu
 			return err
 		}
 
-		go serveStream(stream, limit, register)
+		go serveStream(stream, tlsConfig, limit, register)
 	}
 }
 
@@ -131,7 +158,9 @@ func running(ctx context.Context, container string) bool {
 // until it exits. Its stdin and stdout are OS pipes, rather than handed
 // to cmdexec as readers and writers, so that it exiting closes them
 // without waiting on the other end.
-func serveExec(ctx context.Context, container string, bridgeCmd []string, limit int64, register func(*rpc.Server) error) error {
+func serveExec(
+	ctx context.Context, container string, bridgeCmd []string, tlsConfig *tls.Config, limit int64, register func(*rpc.Server) error,
+) error {
 	requests, requestsW, err := os.Pipe()
 	if err != nil {
 		return err
@@ -158,7 +187,7 @@ func serveExec(ctx context.Context, container string, bridgeCmd []string, limit 
 		err := Serve(ctx, struct {
 			io.ReadCloser
 			io.Writer
-		}{requests, responses}, limit, register)
+		}{requests, responses}, tlsConfig, limit, register)
 		cancel()
 		served <- err
 	}()
@@ -174,13 +203,13 @@ func serveExec(ctx context.Context, container string, bridgeCmd []string, limit 
 // Run serves the bridge in container, started as bridgeCmd, until ctx
 // is canceled, as for [Serve]. It waits for container to start and
 // restarts the bridge if it exits.
-func Run(ctx context.Context, container string, bridgeCmd []string, limit int64, register func(*rpc.Server) error) {
+func Run(ctx context.Context, container string, bridgeCmd []string, tlsConfig *tls.Config, limit int64, register func(*rpc.Server) error) {
 	for {
 		// Errors are retried rather than reported, since writing to the
 		// terminal at this point would write bad output. Failure here is
 		// reported to the client.
 		if running(ctx, container) {
-			_ = serveExec(ctx, container, bridgeCmd, limit, register) //nolint:errcheck // Why: see above.
+			_ = serveExec(ctx, container, bridgeCmd, tlsConfig, limit, register) //nolint:errcheck // Why: see above.
 		}
 
 		select {

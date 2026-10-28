@@ -62,13 +62,18 @@ func (m *memory) Types(context.Context) ([]string, error) {
 func serveMode(t *testing.T, socket, mode string) {
 	t.Helper()
 
+	session, err := stdiobridge.NewSession()
+	assert.NilError(t, err)
+	t.Setenv(stdiobridge.KeyEnv, session.Env())
+
 	hostConn, bridgeConn := net.Pipe()
 
 	// Shared, since every client is served with its own rpc server.
 	cb := &memory{}
 
 	go func() {
-		_ = stdiobridge.Serve(t.Context(), hostConn, 12<<20, func(srv *rpc.Server) error { //nolint:errcheck // Why: ends with the test.
+		//nolint:errcheck // Why: ends with the test.
+		_ = stdiobridge.Serve(t.Context(), hostConn, session.ServerConfig(), 12<<20, func(srv *rpc.Server) error {
 			return srv.RegisterName("Clipboard", clipbridge.NewService(t.Context(), mode, cb))
 		})
 	}()
