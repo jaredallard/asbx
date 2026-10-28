@@ -10,6 +10,7 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.10.4
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/charmbracelet/x/term v0.2.2
+	github.com/creack/pty v1.1.24
 	github.com/dustin/go-humanize v1.1.0
 	github.com/google/go-cmp v0.7.0
 	github.com/google/go-containerregistry v0.22.1

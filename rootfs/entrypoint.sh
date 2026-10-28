@@ -173,7 +173,17 @@ main() {
 	# Every tool in the image's and the project's mise config goes on
 	# PATH, not just the agent, so hooks and the agent can run them (e.g.,
 	# rtk).
-	exec mise exec -- "$agent" "$@"
+	#
+	# With the clipboard bridge, the agent runs on a terminal of its own
+	# so its OSC 52 copies, which the host's terminal may not honor, are
+	# set on the host's clipboard through the bridge instead. Not when
+	# its input or output is piped, which a terminal would alter.
+	local wrap=()
+	if [[ -n ${ASBX_CLIP_SOCKET:-} && -t 0 && -t 1 ]]; then
+		wrap=(asbx-clip pty --)
+	fi
+
+	exec "${wrap[@]}" mise exec -- "$agent" "$@"
 }
 
 main "$@"

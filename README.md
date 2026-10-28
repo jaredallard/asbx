@@ -197,9 +197,14 @@ nothing else on the host can reach it. `clipboard` is one of:
   the agent. On macOS this supports text and PNG images.
 - `off`: the tools fail, and say how to enable them.
 
+With `copy` or `copy_paste`, the agent also runs on a terminal of its
+own, and the OSC 52 sequences it prints to copy are set on your
+clipboard through the same bridge, rather than left to your terminal to
+honor. Queries for your clipboard are dropped.
+
 If your host has none of the tools, asbx warns and doesn't forward the
-clipboard. Claude Code's own copy uses the terminal (OSC 52), so it
-works without this if your terminal supports it.
+clipboard, and OSC 52 copies, such as Claude Code's own, are left to
+your terminal.
 
 ### Podman
 
