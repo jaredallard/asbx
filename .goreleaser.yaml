@@ -47,6 +47,24 @@ builds:
       - darwin
       - windows
     mod_timestamp: "{{ .CommitTimestamp }}"
+  - main: ./cmd/asbx-clip
+    id: asbx-clip
+    binary: asbx-clip
+    flags:
+      - -trimpath
+    ldflags:
+      - -s
+      - -w
+    env:
+      - CGO_ENABLED=0
+    goarch:
+      - amd64
+      - arm64
+    goos:
+      - linux
+      - darwin
+      - windows
+    mod_timestamp: "{{ .CommitTimestamp }}"
 dockers_v2:
   - images:
       - ghcr.io/jaredallard/{{ .ProjectName }}

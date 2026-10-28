@@ -15,14 +15,16 @@ readonly platforms=(linux/amd64 linux/arm64)
 ctx=$(mktemp -d)
 trap 'rm -rf "$ctx"' EXIT
 
-# The Dockerfile copies asbx-op from $TARGETPLATFORM/asbx-op, where
-# goreleaser puts it. It's built with goreleaser's flags.
+# The Dockerfile copies asbx-op and asbx-clip from
+# $TARGETPLATFORM/, where goreleaser puts them. It's built with goreleaser's flags.
 for platform in "${platforms[@]}"; do
 	mkdir -p "$ctx/$platform"
 	(
 		cd "$src"
 		CGO_ENABLED=0 GOOS="${platform%/*}" GOARCH="${platform#*/}" \
 			go build -trimpath -ldflags "-s -w" -o "$ctx/$platform/asbx-op" ./cmd/asbx-op
+		CGO_ENABLED=0 GOOS="${platform%/*}" GOARCH="${platform#*/}" \
+			go build -trimpath -ldflags "-s -w" -o "$ctx/$platform/asbx-clip" ./cmd/asbx-clip
 	)
 done
 

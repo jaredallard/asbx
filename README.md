@@ -29,6 +29,8 @@ from your local machine with sane defaults and low setup cost.
 - GitHub authentication is passed through via `gh auth token`.
 - `op read`, `op run` and `op item list` work in the container through
   your host's `op`, limited to the secrets you allow if enabled.
+- Clipboard tools (`wl-copy`, `xclip`, `pbcopy`, ...) in the container
+  copy to your host's clipboard, and can paste from it if enabled.
 - Containers can be run in the container with rootless Podman, if
   enabled, without giving it access to your host's Docker or privileged
   access.
@@ -141,6 +143,7 @@ options are nested under `claude:` and `codex:` maps, as in the example.
 | `github_enabled`                  | bool   | Passes `GH_TOKEN` (from `gh auth token`) into the container. On by default; skipped when not logged in.                                                                |
 | `op_allowed_secret_refs`          | list   | `op://` refs that `op` in the container may read through your host's `op`. See [1Password CLI](#1password-cli).                                                        |
 | `extra_secret_env_vars`           | map    | `NAME: op://ref` entries; each 1Password secret is passed into the container as the environment variable `NAME`.                                                       |
+| `clipboard`                       | string | How the container reaches your host's clipboard: `off`, `copy` or `copy_paste`. See [Clipboard](#clipboard). Defaults to `copy`.                                       |
 | `network_host`                    | bool   | Runs the container on the host's network, so it can reach every service listening on localhost. Otherwise host services are only reachable via `host.docker.internal`. |
 | `podman_enabled`                  | bool   | Lets the agent run containers with rootless Podman inside the container. See [Podman](#podman).                                                                        |
 | `extra_mounts`                    | list   | Absolute paths to mount read-only at the same path inside the container.                                                                                               |
@@ -179,6 +182,24 @@ not its username, websites, tags or other fields.
 > [!WARNING]
 > Only `op read`, `op run` and `op item list` are supported in the
 > container.
+
+### Clipboard
+
+The container has no display, so asbx stands in for `wl-copy`,
+`wl-paste`, `xclip`, `xsel`, `pbcopy` and `pbpaste` and forwards them
+to your host's clipboard tool (`pbcopy`, `wl-clipboard`, `xclip` or
+`xsel`). It's a bridge like the [1Password CLI](#1password-cli)'s, so
+nothing else on the host can reach it. `clipboard` is one of:
+
+- `copy` (default): the container can write to your clipboard, but not
+  read it.
+- `copy_paste`: it can also read it, such as for pasting an image into
+  the agent. On macOS this supports text and PNG images.
+- `off`: the tools fail, and say how to enable them.
+
+If your host has none of the tools, asbx warns and doesn't forward the
+clipboard. Claude Code's own copy uses the terminal (OSC 52), so it
+works without this if your terminal supports it.
 
 ### Podman
 
@@ -287,6 +308,10 @@ What it doesn't protect against:
   grant more permissions. asbx shows you a new or changed one, including
   one the agent created, and won't use it until you trust it, so read
   it before you do.
+- **`clipboard`**: `copy` lets the agent replace what's on your
+  clipboard, which you may later paste into a terminal, so check what
+  you paste. `copy_paste` lets it read everything you copy, passwords
+  included, while it runs.
 - **`podman_enabled`**: the container runs with a seccomp profile that
   allows creating user namespaces and mounting in them, which lets the
   agent reach kernel code, as root in a user namespace, that's been

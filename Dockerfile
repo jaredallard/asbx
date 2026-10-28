@@ -99,6 +99,17 @@ RUN <<EOF
 	install -d -o ubuntu -g ubuntu /run/asbx
 EOF
 
+# Stands in for the clipboard tools, which can't reach a display here,
+# and forwards them to the host's clipboard when clipboard is enabled.
+COPY --chmod=0755 $TARGETPLATFORM/asbx-clip /usr/local/bin/asbx-clip
+RUN <<EOF
+	set -euo pipefail
+
+	for tool in wl-copy wl-paste xclip xsel pbcopy pbpaste; do
+		ln -s asbx-clip "/usr/local/bin/$tool"
+	done
+EOF
+
 USER ubuntu
 WORKDIR /home/ubuntu
 

@@ -137,6 +137,21 @@ func TestNewBanner(t *testing.T) {
 	}, cmp.AllowUnexported(banner{}, notice{}))
 }
 
+// TestNewBannerClipboard verifies that the banner shows the clipboard
+// mode when the bridge is set up for it, and not otherwise.
+func TestNewBannerClipboard(t *testing.T) {
+	host := newTestHost(t)
+	host.Config.Clipboard = "copy_paste"
+
+	run := &docker.Run{}
+	got := newBanner(host, &fakeAgent{}, run, &opbridge.Allowlist{}, nil)
+	assert.DeepEqual(t, got.extras, []string(nil))
+
+	run.Env("ASBX_CLIP_SOCKET=/run/asbx/clip.sock")
+	got = newBanner(host, &fakeAgent{}, run, &opbridge.Allowlist{}, nil)
+	assert.DeepEqual(t, got.extras, []string{"clipboard (copy_paste)"})
+}
+
 // TestNetworkMode verifies that the network mode is the one configured,
 // noted as being in a VM where Docker runs in one.
 func TestNetworkMode(t *testing.T) {

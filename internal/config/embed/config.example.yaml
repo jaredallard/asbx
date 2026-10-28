@@ -35,6 +35,17 @@ op_allowed_secret_refs: []
 #   NPM_TOKEN: op://Private/npm/credential
 extra_secret_env_vars: {}
 
+# clipboard is how clipboard tools inside the container (`wl-copy`,
+# `wl-paste`, `xclip`, `xsel`, `pbcopy` and `pbpaste`) reach the host's
+# clipboard, through the host's own clipboard tool:
+#
+# - `off`: not forwarded, the tools fail.
+# - `copy`: the container can write to your clipboard, but not read it.
+# - `copy_paste`: the container can also read your clipboard, such as to
+#   paste an image into the agent. Anything on it, passwords included,
+#   is readable by the agent.
+clipboard: copy
+
 # network_host when set to true runs the container on the host's
 # network, so it can reach every service listening on localhost. When
 # unset, host services are only reachable via `host.docker.internal`.

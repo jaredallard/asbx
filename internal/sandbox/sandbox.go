@@ -37,6 +37,8 @@ import (
 	"strings"
 	"sync"
 
+	"git.rgst.io/jaredallard/asbx/internal/clipbridge"
+	"git.rgst.io/jaredallard/asbx/internal/config"
 	"git.rgst.io/jaredallard/asbx/internal/docker"
 	"git.rgst.io/jaredallard/asbx/internal/image"
 	"git.rgst.io/jaredallard/asbx/internal/opbridge"
@@ -231,6 +233,39 @@ func opBridge(run *docker.Run, entries []string) error {
 	return nil
 }
 
+// hostClipboard returns the host's clipboard, for the container's
+// clipboard tools to use through the bridge, or nil when mode doesn't
+// forward it or the host has no clipboard tool.
+func hostClipboard(mode string) clipbridge.Clipboard {
+	if mode != config.ClipboardCopy && mode != config.ClipboardCopyPaste {
+		return nil
+	}
+
+	cb, err := clipbridge.Detect(runtime.GOOS)
+	if err != nil {
+		return nil
+	}
+
+	return cb
+}
+
+// clipboardBridge lets the clipboard tools in the container use the
+// host's, as far as mode allows. The bridge itself is started by Run,
+// alongside the container. The host lacking a clipboard tool is a
+// warning rather than an error, since mode is on by default.
+func clipboardBridge(host *Host, run *docker.Run, mode string) {
+	if mode != config.ClipboardCopy && mode != config.ClipboardCopyPaste {
+		return
+	}
+
+	if hostClipboard(mode) == nil {
+		host.Warn("clipboard is %s but no clipboard tool was found on this host, install %s", mode, "wl-clipboard, xclip or xsel")
+		return
+	}
+
+	run.Env(clipbridge.SocketEnv + "=" + clipbridge.Socket)
+}
+
 // writePodmanSeccompProfile writes podmanSeccompProfile into the user's
 // cache directory, for docker to read, and returns its path. The file
 // is named after the profile's checksum, so versions of asbx don't
@@ -335,6 +370,8 @@ func configure(ctx context.Context, host *Host, run *docker.Run, agents []Agent)
 	if err := opBridge(run, cfg.OPAllowedSecretRefs); err != nil {
 		return err
 	}
+
+	clipboardBridge(host, run, cfg.Clipboard)
 
 	if cfg.ForgejoEnabled {
 		if err := forgejo(ctx, run); err != nil {
@@ -477,23 +514,25 @@ func Run(ctx context.Context, host *Host, agent Agent, known []Agent, args []str
 	starting(t, agent.Name())
 
 	cmd := append([]string{Entrypoint, agent.Name()}, args...)
-	if allow.Empty() {
-		err := docker.Exec(ctx, run, ref, cmd)
-		goodbye(t, err)
 
-		return err
-	}
-
-	// The bridge runs for as long as the container does.
-	bridgeCtx, stopBridge := context.WithCancel(ctx)
+	// The bridges run for as long as the container does.
+	bridgeCtx, stopBridges := context.WithCancel(ctx)
 
 	var wg sync.WaitGroup
-	wg.Go(func() {
-		opbridge.Run(bridgeCtx, run.Name(), allow)
-	})
+	if !allow.Empty() {
+		wg.Go(func() {
+			opbridge.Run(bridgeCtx, run.Name(), allow)
+		})
+	}
+
+	if cb := hostClipboard(host.Config.Clipboard); cb != nil {
+		wg.Go(func() {
+			clipbridge.Run(bridgeCtx, run.Name(), host.Config.Clipboard, cb)
+		})
+	}
 
 	err = docker.Exec(ctx, run, ref, cmd)
-	stopBridge()
+	stopBridges()
 	wg.Wait()
 
 	goodbye(t, err)

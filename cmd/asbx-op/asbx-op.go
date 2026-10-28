@@ -33,6 +33,7 @@ import (
 	"git.rgst.io/jaredallard/asbx/internal/onepassword"
 	"git.rgst.io/jaredallard/asbx/internal/opbridge"
 	"git.rgst.io/jaredallard/asbx/internal/opshim"
+	"git.rgst.io/jaredallard/asbx/internal/stdiobridge"
 	"github.com/urfave/cli/v3"
 )
 
@@ -160,7 +161,7 @@ func bridgeCommand() *cli.Command {
 		Name:   "bridge",
 		Hidden: true,
 		Action: func(ctx context.Context, _ *cli.Command) error {
-			return opbridge.Bridge(ctx, os.Stdin, os.Stdout, opbridge.Socket)
+			return stdiobridge.Bridge(ctx, stdiobridge.Stdio(), opbridge.Socket)
 		},
 	}
 }

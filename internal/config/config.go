@@ -57,6 +57,11 @@ type Config struct {
 	// may read through the host's op.
 	OPAllowedSecretRefs []string `yaml:"op_allowed_secret_refs"`
 
+	// Clipboard is how the container's clipboard tools, such as wl-copy
+	// and xclip, reach the host's clipboard: one of [ClipboardOff],
+	// [ClipboardCopy] or [ClipboardCopyPaste].
+	Clipboard string `yaml:"clipboard"`
+
 	// NetworkHost runs the container on the host's network.
 	NetworkHost bool `yaml:"network_host"`
 
@@ -117,6 +122,20 @@ const (
 	ClaudeHomeASBX = "asbx"
 )
 
+// The values of [Config.Clipboard].
+const (
+	// ClipboardOff doesn't forward the clipboard.
+	ClipboardOff = "off"
+
+	// ClipboardCopy lets the container write to the host's clipboard,
+	// but not read it.
+	ClipboardCopy = "copy"
+
+	// ClipboardCopyPaste lets the container write to and read from the
+	// host's clipboard.
+	ClipboardCopyPaste = "copy_paste"
+)
+
 // Codex is the configuration specific to Codex.
 type Codex struct {
 	// APIKeySecretRef is the 1Password ref to read OPENAI_API_KEY from,
@@ -133,6 +152,7 @@ func Default() Config {
 		Agent:          "claude",
 		ForgejoEnabled: true,
 		GitHubEnabled:  true,
+		Clipboard:      ClipboardCopy,
 		//nolint:gosec // Why: these are where the secrets are, not secrets.
 		Claude: Claude{
 			OAuthTokenSecretRef: "op://Private/claude-token/credential",
@@ -193,6 +213,13 @@ func Load(files ...File) (*Config, error) {
 		if err := decode(file, &cfg); err != nil {
 			return nil, err
 		}
+	}
+
+	switch cfg.Clipboard {
+	case ClipboardOff, ClipboardCopy, ClipboardCopyPaste:
+	default:
+		return nil, fmt.Errorf("invalid clipboard %q, must be %q, %q or %q",
+			cfg.Clipboard, ClipboardOff, ClipboardCopy, ClipboardCopyPaste)
 	}
 
 	return &cfg, nil

@@ -20,10 +20,12 @@ package sandbox
 import (
 	"fmt"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"git.rgst.io/jaredallard/asbx/internal/clipbridge"
 	"git.rgst.io/jaredallard/asbx/internal/docker"
 	"git.rgst.io/jaredallard/asbx/internal/opbridge"
 	"git.rgst.io/jaredallard/asbx/internal/term"
@@ -157,6 +159,11 @@ func newBanner(host *Host, agent Agent, run *docker.Run, allow *opbridge.Allowli
 
 	if !allow.Empty() {
 		extras = append(extras, "op bridge ("+count(allow.Len(), "ref")+")")
+	}
+
+	// Only when the bridge was set up, which it isn't without a tool.
+	if slices.Contains(run.Args(), clipbridge.SocketEnv+"="+clipbridge.Socket) {
+		extras = append(extras, "clipboard ("+cfg.Clipboard+")")
 	}
 
 	mounts := 0

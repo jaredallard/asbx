@@ -94,6 +94,7 @@ func TestLoad(t *testing.T) {
 agent: codex
 forgejo_enabled: true
 github_enabled: true
+clipboard: copy_paste
 network_host: true
 podman_enabled: true
 op_allowed_secret_refs:
@@ -115,6 +116,7 @@ codex:
 				Agent:               "codex",
 				ForgejoEnabled:      true,
 				GitHubEnabled:       true,
+				Clipboard:           ClipboardCopyPaste,
 				NetworkHost:         true,
 				PodmanEnabled:       true,
 				OPAllowedSecretRefs: []string{"op://x/y/*", "op://x/z/w"},
@@ -290,4 +292,21 @@ func TestLoadInvalidValue(t *testing.T) {
 
 	var typeErr *yaml.TypeError
 	assert.Assert(t, errors.As(err, &typeErr), "Load() = %v, want *yaml.TypeError", err)
+}
+
+// TestLoadClipboard verifies that the clipboard option defaults to
+// copy, accepts each mode and rejects anything else.
+func TestLoadClipboard(t *testing.T) {
+	cfg, err := Load()
+	assert.NilError(t, err)
+	assert.Equal(t, cfg.Clipboard, ClipboardCopy)
+
+	for _, mode := range []string{ClipboardOff, ClipboardCopy, ClipboardCopyPaste} {
+		cfg, err := Load(configFiles("clipboard: " + mode + "\n")...)
+		assert.NilError(t, err)
+		assert.Equal(t, cfg.Clipboard, mode)
+	}
+
+	_, err = Load(configFiles("clipboard: paste\n")...)
+	assert.ErrorContains(t, err, `invalid clipboard "paste"`)
 }

@@ -214,6 +214,56 @@ func TestBuildOPBridge(t *testing.T) {
 	assert.Assert(t, slices.Contains(run.Args(), socketEnv), "Build() args = %q, want %q", run.Args(), socketEnv)
 }
 
+// TestBuildClipboard verifies that the container is told where the
+// clipboard bridge is only when the clipboard is forwarded and the host
+// has a tool for it, and that a host without one is warned rather than
+// refused, since the clipboard is forwarded by default.
+func TestBuildClipboard(t *testing.T) {
+	socketEnv := "ASBX_CLIP_SOCKET=/run/asbx/clip.sock"
+
+	withTools := cmdexec.NewMockExecutor()
+	withTools.AddLookPath("wl-copy", "/usr/bin/wl-copy")
+	withTools.AddLookPath("wl-paste", "/usr/bin/wl-paste")
+
+	noTools := cmdexec.NewMockExecutor()
+	for _, name := range []string{"pbcopy", "pbpaste", "wl-copy", "wl-paste", "xclip", "xsel"} {
+		noTools.AddLookPathError(name, errors.New("executable file not found in $PATH"))
+	}
+
+	tests := []struct {
+		name     string
+		mode     string
+		mock     *cmdexec.MockExecutor
+		wantEnv  bool
+		wantWarn bool
+	}{
+		{name: "Off", mode: "off", mock: withTools},
+		{name: "Copy", mode: "copy", mock: withTools, wantEnv: true},
+		{name: "CopyPaste", mode: "copy_paste", mock: withTools, wantEnv: true},
+		{name: "NoTool", mode: "copy", mock: noTools, wantWarn: true},
+		{name: "OffNoTool", mode: "off", mock: noTools},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmdexec.UseMockExecutor(t, tt.mock)
+
+			host := newTestHost(t)
+			host.Config.Clipboard = tt.mode
+
+			run, err := Build(t.Context(), host, &fakeAgent{}, nil)
+			assert.NilError(t, err)
+			assert.Equal(t, slices.Contains(run.Args(), socketEnv), tt.wantEnv, "Build() args = %q", run.Args())
+
+			var warned bool
+			for _, n := range host.notices {
+				warned = warned || (n.warn && strings.Contains(n.msg, "clipboard"))
+			}
+
+			assert.Equal(t, warned, tt.wantWarn, "notices = %v", host.notices)
+		})
+	}
+}
+
 // TestBuildOPBridgeWithoutOP verifies that asbx refuses to run when
 // refs are allowed but there's no op on the host to read them with.
 func TestBuildOPBridgeWithoutOP(t *testing.T) {

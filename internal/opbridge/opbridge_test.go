@@ -18,16 +18,15 @@
 package opbridge
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
-	"io"
+	"net"
+	"net/rpc"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"git.rgst.io/jaredallard/asbx/internal/onepassword"
+	"git.rgst.io/jaredallard/asbx/internal/stdiobridge"
 	"gotest.tools/v3/assert"
 )
 
@@ -84,85 +83,61 @@ func (f *fakeOP) FieldRefs(_ context.Context, items []onepassword.Item) (map[str
 	return refs, nil
 }
 
-// TestServe verifies that each request is answered in order, that op
-// is only asked for allowed refs, that only items with an allowed field
-// are listed, and that op's errors are passed on.
-func TestServe(t *testing.T) {
+// githubItem returns an item in the Dev vault.
+func githubItem() onepassword.Item {
+	return onepassword.Item{ID: "gh", Title: "github", Vault: onepassword.ItemVault{ID: "dev", Name: "Dev"}}
+}
+
+// TestServiceRead verifies that op is only asked for allowed refs, and
+// that op's errors are passed on.
+func TestServiceRead(t *testing.T) {
 	allow, err := ParseAllowlist([]string{"op://Dev/*/token"})
 	assert.NilError(t, err)
 
-	github := onepassword.Item{ID: "gh", Title: "github", Vault: onepassword.ItemVault{ID: "dev", Name: "Dev"}}
+	op := &fakeOP{secrets: map[string]string{"op://Dev/github/token": "hunter2"}}
+	svc := NewService(t.Context(), allow, op)
+
+	var got string
+	assert.NilError(t, svc.Read(&ReadArgs{Ref: "op://Dev/github/token"}, &got))
+	assert.Equal(t, got, "hunter2")
+
+	err = svc.Read(&ReadArgs{Ref: "op://Private/bank/password"}, &got)
+	assert.Error(t, err, `"op://Private/bank/password" isn't in op_allowed_secret_refs`)
+
+	err = svc.Read(&ReadArgs{Ref: "op://Dev/missing/token"}, &got)
+	assert.Error(t, err, "item not found")
+
+	assert.DeepEqual(t, op.refs, []string{"op://Dev/github/token", "op://Dev/missing/token"})
+}
+
+// TestServiceListItems verifies that only items with an allowed field
+// are listed, from the vault asked for, and that op's errors are passed
+// on.
+func TestServiceListItems(t *testing.T) {
+	allow, err := ParseAllowlist([]string{"op://Dev/*/token"})
+	assert.NilError(t, err)
+
+	github := githubItem()
 	bank := onepassword.Item{ID: "bank", Title: "bank", Vault: onepassword.ItemVault{ID: "private", Name: "Private"}}
 	op := &fakeOP{
-		secrets: map[string]string{"op://Dev/github/token": "hunter2"},
-		items:   []onepassword.Item{github, bank},
+		items: []onepassword.Item{github, bank},
 		fields: map[string][]string{
 			"gh":   {"op://Dev/github/token"},
 			"bank": {"op://Private/bank/password"},
 		},
 	}
+	svc := NewService(t.Context(), allow, op)
 
-	var requests strings.Builder
-	for _, req := range []Request{
-		{Ref: "op://Dev/github/token"},
-		{Ref: "op://Private/bank/password"},
-		{Ref: "op://Dev/missing/token"},
-		{Command: CommandItemList},
-		{Command: CommandItemList, Vault: "Private"},
-		{Command: "item delete", Ref: "op://Dev/github/token"},
-	} {
-		b, err := json.Marshal(req)
-		assert.NilError(t, err)
+	var got []onepassword.Item
+	assert.NilError(t, svc.ListItems(&ListArgs{}, &got))
+	assert.DeepEqual(t, got, []onepassword.Item{github})
 
-		requests.Write(append(b, '\n'))
-	}
+	got = nil
+	assert.NilError(t, svc.ListItems(&ListArgs{Vault: "Private"}, &got))
+	assert.Equal(t, len(got), 0, "ListItems(Private) = %v, want none", got)
 
-	var out bytes.Buffer
-	assert.NilError(t, Serve(t.Context(), strings.NewReader(requests.String()), &out, allow, op))
-
-	var got []Response
-	dec := json.NewDecoder(&out)
-	for {
-		var resp Response
-		err := dec.Decode(&resp)
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			t.Fatalf("Serve() wrote invalid JSON: %v", err)
-		}
-
-		got = append(got, resp)
-	}
-
-	assert.DeepEqual(t, got, []Response{
-		{Value: "hunter2"},
-		{Error: `"op://Private/bank/password" isn't in op_allowed_secret_refs`},
-		{Error: "item not found"},
-		{Items: []onepassword.Item{github}},
-		{},
-		{Error: "op item delete isn't supported in asbx"},
-	})
-	assert.DeepEqual(t, op.refs, []string{"op://Dev/github/token", "op://Dev/missing/token"})
-}
-
-// TestServeInvalidRequest verifies that a request that isn't JSON stops
-// the host from serving the container.
-func TestServeInvalidRequest(t *testing.T) {
-	op := &fakeOP{}
-
-	err := Serve(t.Context(), strings.NewReader("not json\n"), io.Discard, &Allowlist{}, op)
-	assert.ErrorContains(t, err, "invalid request from the container")
-}
-
-// TestServeRequestTooLong verifies that the container can't make the
-// host buffer a request without limit.
-func TestServeRequestTooLong(t *testing.T) {
-	op := &fakeOP{}
-	long := strings.Repeat("a", maxRequest+1)
-
-	err := Serve(t.Context(), strings.NewReader(long), io.Discard, &Allowlist{}, op)
-	assert.Assert(t, err != nil, "Serve() = nil, want error for a %d byte request", len(long))
+	op.listErr = errors.New("not signed in")
+	assert.Error(t, svc.ListItems(&ListArgs{}, &got), "not signed in")
 }
 
 // TestBridge verifies that op in the container reads secrets and lists
@@ -171,7 +146,7 @@ func TestBridge(t *testing.T) {
 	allow, err := ParseAllowlist([]string{"op://Dev/github/token"})
 	assert.NilError(t, err)
 
-	github := onepassword.Item{ID: "gh", Title: "github", Vault: onepassword.ItemVault{ID: "dev", Name: "Dev"}}
+	github := githubItem()
 	op := &fakeOP{
 		secrets: map[string]string{"op://Dev/github/token": "hunter2"},
 		items:   []onepassword.Item{github},
@@ -179,18 +154,19 @@ func TestBridge(t *testing.T) {
 	}
 	socket := filepath.Join(t.TempDir(), "op.sock")
 
-	// toHost and toContainer are the bridge's stdout and stdin.
-	hostR, toHost := io.Pipe()
-	containerR, toContainer := io.Pipe()
+	// The bridge's stdio, as the host and the bridge see it.
+	hostConn, bridgeConn := net.Pipe()
 
 	served := make(chan error, 1)
 	go func() {
-		served <- Serve(t.Context(), hostR, toContainer, allow, op)
+		served <- stdiobridge.Serve(t.Context(), hostConn, maxRequest, func(srv *rpc.Server) error {
+			return srv.RegisterName(serviceName, NewService(t.Context(), allow, op))
+		})
 	}()
 
 	bridged := make(chan error, 1)
 	go func() {
-		bridged <- Bridge(t.Context(), containerR, toHost, socket)
+		bridged <- stdiobridge.Bridge(t.Context(), bridgeConn, socket)
 	}()
 
 	got, err := Read(t.Context(), socket, "op://Dev/github/token")
@@ -213,10 +189,8 @@ func TestBridge(t *testing.T) {
 	assert.ErrorContains(t, err, "not signed in")
 
 	// The host going away stops the bridge.
-	toContainer.Close()
+	hostConn.Close()
 	assert.NilError(t, <-bridged)
-
-	toHost.Close()
 	assert.NilError(t, <-served)
 }
 

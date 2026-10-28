@@ -18,32 +18,22 @@
 package opbridge
 
 import (
-	"bufio"
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
-	"os"
-	"strings"
-	"time"
+	"net/rpc"
 
 	"git.rgst.io/jaredallard/asbx/internal/onepassword"
-	"go.rgst.io/jaredallard/cmdexec/v2"
+	"git.rgst.io/jaredallard/asbx/internal/stdiobridge"
 )
 
-// maxRequest is the longest request line the host accepts from the
-// container, so it can't make the host buffer without limit.
+// serviceName is what [Service] is registered as.
+const serviceName = "OP"
+
+// maxRequest is the most the host reads from a client, so it can't
+// make the host buffer without limit.
 const maxRequest = 64 << 10 // 64 KiB.
 
-// retryInterval is how long Run waits between checking that the
-// container is running and restarting the bridge.
-const retryInterval = 250 * time.Millisecond
-
-// ReadFunc reads the secret at an op:// ref.
-type ReadFunc func(ctx context.Context, ref string) (string, error)
-
-// OP is the host's op, which [Serve] answers requests with.
+// OP is the host's op, which [Service] answers requests with.
 type OP interface {
 	// Read returns the secret at an op:// ref.
 	Read(ctx context.Context, ref string) (string, error)
@@ -74,118 +64,54 @@ func (hostOP) FieldRefs(ctx context.Context, items []onepassword.Item) (map[stri
 	return onepassword.FieldRefsNonInteractive(ctx, items)
 }
 
-// answer returns the Response to req, run with op, which only reads
-// refs allow allows and only lists items with a field it allows.
-func answer(ctx context.Context, req *Request, allow *Allowlist, op OP) Response {
-	switch req.Command {
-	case "":
-		if !allow.Allows(req.Ref) {
-			return Response{Error: fmt.Sprintf("%q isn't in op_allowed_secret_refs", req.Ref)}
-		}
-
-		value, err := op.Read(ctx, req.Ref)
-		if err != nil {
-			return Response{Error: err.Error()}
-		}
-
-		return Response{Value: value}
-	case CommandItemList:
-		items, err := allowedItems(ctx, op, allow, req.Vault)
-		if err != nil {
-			return Response{Error: err.Error()}
-		}
-
-		return Response{Items: items}
-	default:
-		return Response{Error: fmt.Sprintf("op %s isn't supported in asbx", req.Command)}
-	}
+// Service is what the container calls on the host: op, which only reads
+// the refs its allowlist allows and only lists items with a field it
+// allows.
+type Service struct {
+	ctx   context.Context //nolint:containedctx // Why: net/rpc methods have no context of their own.
+	allow *Allowlist
+	op    OP
 }
 
-// Serve answers each [Request] read from r on w, in order, until r is
-// closed, with op. Only refs allow allows are read, and only items with
-// a field it allows are listed.
-func Serve(ctx context.Context, r io.Reader, w io.Writer, allow *Allowlist, op OP) error {
-	scanner := bufio.NewScanner(r)
-	scanner.Buffer(nil, maxRequest)
+// NewService returns the [Service] that answers with op, as limited by
+// allow, until ctx is canceled.
+func NewService(ctx context.Context, allow *Allowlist, op OP) *Service {
+	return &Service{ctx: ctx, allow: allow, op: op}
+}
 
-	enc := json.NewEncoder(w)
-	for scanner.Scan() {
-		var req Request
-		if err := json.Unmarshal(scanner.Bytes(), &req); err != nil {
-			return fmt.Errorf("invalid request from the container: %w", err)
-		}
-
-		resp := answer(ctx, &req, allow, op)
-		if err := enc.Encode(resp); err != nil {
-			return err
-		}
+// Read sets reply to the secret at args.Ref, if it's allowed.
+func (s *Service) Read(args *ReadArgs, reply *string) error {
+	if !s.allow.Allows(args.Ref) {
+		return fmt.Errorf("%q isn't in op_allowed_secret_refs", args.Ref)
 	}
 
-	return scanner.Err()
-}
-
-// running reports whether container has started and not yet stopped.
-func running(ctx context.Context, container string) bool {
-	out, err := cmdexec.CommandContext(ctx, "docker", "container", "inspect", "--format", "{{.State.Running}}", container).Output()
-	return err == nil && strings.TrimSpace(string(out)) == "true"
-}
-
-// serveExec starts the bridge in container and serves it until it
-// exits. Its stdin and stdout are OS pipes, rather than handed to
-// cmdexec as readers and writers, so that it exiting closes them
-// without waiting on the other end.
-func serveExec(ctx context.Context, container string, allow *Allowlist) error {
-	requests, requestsW, err := os.Pipe()
+	value, err := s.op.Read(s.ctx, args.Ref)
 	if err != nil {
 		return err
 	}
-	defer requests.Close()
 
-	responsesR, responses, err := os.Pipe()
+	*reply = value
+
+	return nil
+}
+
+// ListItems sets reply to the items with a field that's allowed.
+func (s *Service) ListItems(args *ListArgs, reply *[]onepassword.Item) error {
+	items, err := allowedItems(s.ctx, s.op, s.allow, args.Vault)
 	if err != nil {
 		return err
 	}
-	defer responses.Close()
 
-	// Serve failing stops the bridge, for Run to restart it.
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	*reply = items
 
-	// stderr isn't set, so the bridge can't write over the agent.
-	cmd := cmdexec.CommandContext(ctx, "docker", "exec", "--interactive", container, "asbx-op", "bridge")
-	cmd.SetStdin(responsesR)
-	cmd.SetStdout(requestsW)
-
-	served := make(chan error, 1)
-	go func() {
-		err := Serve(ctx, requests, responses, allow, hostOP{})
-		cancel()
-		served <- err
-	}()
-
-	err = cmd.Run()
-
-	requestsW.Close()
-	responsesR.Close()
-
-	return errors.Join(err, <-served)
+	return nil
 }
 
-// Run serves the bridge in container until ctx is canceled. It waits
-// for container to start and restarts the bridge if it exits.
+// Run serves the bridge in container until ctx is canceled, with the
+// host's op, which only reads refs allow allows and only lists items
+// with a field it allows.
 func Run(ctx context.Context, container string, allow *Allowlist) {
-	for {
-		// Errors are retried rather than reported, since writing to the
-		// terminal at this point would write bad output. Failure here is
-		// reported by the shim.
-		if running(ctx, container) {
-			_ = serveExec(ctx, container, allow) //nolint:errcheck // Why: see above.
-		}
-
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(retryInterval):
-		}
-	}
+	stdiobridge.Run(ctx, container, []string{"asbx-op", "bridge"}, maxRequest, func(srv *rpc.Server) error {
+		return srv.RegisterName(serviceName, NewService(ctx, allow, hostOP{}))
+	})
 }

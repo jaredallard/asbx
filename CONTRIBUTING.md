@@ -7,7 +7,7 @@ guidelines](https://github.com/jaredallard/jaredallard/blob/master/CONTRIBUTING.
 
 ## Building the image
 
-The image includes `asbx-op`, built for its platform by goreleaser, so
+The image includes `asbx-op` and `asbx-clip`, built for its platform by goreleaser, so
 it can't be built with `docker build` on its own. Build it with:
 
 ```bash
