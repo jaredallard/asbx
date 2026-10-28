@@ -53,6 +53,7 @@ func Run(ctx context.Context, argv []string, wrap func(io.Writer) io.Writer) err
 
 	// Canceling ctx asks the command to stop, and only kills it if it
 	// doesn't.
+	//nolint:gosec // Why: running the command it's given is its job.
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
 	cmd.WaitDelay = killDelay

@@ -147,7 +147,7 @@ func (f *Filter) step(out []byte, b byte) []byte {
 
 		f.state = stateEsc
 		return f.step(out, b)
-	default: // stateDrop
+	case stateDrop:
 		switch b {
 		case bel, can, sub:
 			f.state = stateText
@@ -157,6 +157,8 @@ func (f *Filter) step(out []byte, b byte) []byte {
 
 		return out
 	}
+
+	return out
 }
 
 // stepOSC handles b inside an OSC sequence, which is held until it's
