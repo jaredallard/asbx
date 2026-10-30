@@ -264,6 +264,54 @@ func TestBuildClipboard(t *testing.T) {
 	}
 }
 
+// TestBuildOpenURLs verifies that the container is told where the URL
+// bridge is only when opening URLs is enabled and the host can, and
+// that a host that can't is warned rather than refused, since it's
+// enabled by default.
+func TestBuildOpenURLs(t *testing.T) {
+	socketEnv := "ASBX_OPEN_SOCKET=/run/asbx/open.sock"
+
+	withTool := cmdexec.NewMockExecutor()
+	withTool.AddLookPath("open", "/usr/bin/open")
+	withTool.AddLookPath("xdg-open", "/usr/bin/xdg-open")
+
+	noTool := cmdexec.NewMockExecutor()
+	noTool.AddLookPathError("open", errors.New("executable file not found in $PATH"))
+	noTool.AddLookPathError("xdg-open", errors.New("executable file not found in $PATH"))
+
+	tests := []struct {
+		name     string
+		enabled  bool
+		mock     *cmdexec.MockExecutor
+		wantEnv  bool
+		wantWarn bool
+	}{
+		{name: "Off", mock: withTool},
+		{name: "On", enabled: true, mock: withTool, wantEnv: true},
+		{name: "NoTool", enabled: true, mock: noTool, wantWarn: true},
+		{name: "OffNoTool", mock: noTool},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmdexec.UseMockExecutor(t, tt.mock)
+
+			host := newTestHost(t)
+			host.Config.OpenURLsEnabled = tt.enabled
+
+			run, err := Build(t.Context(), host, &fakeAgent{}, nil)
+			assert.NilError(t, err)
+			assert.Equal(t, slices.Contains(run.Args(), socketEnv), tt.wantEnv, "Build() args = %q", run.Args())
+
+			var warned bool
+			for _, n := range host.notices {
+				warned = warned || (n.warn && strings.Contains(n.msg, "open_urls_enabled"))
+			}
+
+			assert.Equal(t, warned, tt.wantWarn, "notices = %v", host.notices)
+		})
+	}
+}
+
 // TestBuildOPBridgeWithoutOP verifies that asbx refuses to run when
 // refs are allowed but there's no op on the host to read them with.
 func TestBuildOPBridgeWithoutOP(t *testing.T) {

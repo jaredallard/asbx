@@ -12,10 +12,11 @@ ctx=$(mktemp -d)
 trap 'rm -rf "$ctx"' EXIT
 
 # The Dockerfile expects the build context goreleaser creates: rootfs
-# and asbx-op and asbx-clip at $TARGETPLATFORM/.
+# and asbx-op, asbx-clip and asbx-open at $TARGETPLATFORM/.
 mkdir -p "$ctx/linux/$arch"
 GOOS=linux GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -o "$ctx/linux/$arch/asbx-op" ./cmd/asbx-op
 GOOS=linux GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -o "$ctx/linux/$arch/asbx-clip" ./cmd/asbx-clip
+GOOS=linux GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -o "$ctx/linux/$arch/asbx-open" ./cmd/asbx-open
 cp -r Dockerfile rootfs "$ctx/"
 docker build --platform "linux/$arch" -t "ghcr.io/jaredallard/asbx:$tag" "$ctx"
 rm -rf "$ctx"

@@ -46,6 +46,12 @@ extra_secret_env_vars: {}
 #   is readable by the agent.
 clipboard: copy
 
+# open_urls_enabled when set to true lets `xdg-open` inside the container
+# open http and https URLs in your host's browser, such as for the agent
+# to log in or show you a link. On by default, and skipped when the host
+# has no `open` or `xdg-open`.
+open_urls_enabled: true
+
 # network_host when set to true runs the container on the host's
 # network, so it can reach every service listening on localhost. When
 # unset, host services are only reachable via `host.docker.internal`.

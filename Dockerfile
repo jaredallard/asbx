@@ -110,6 +110,10 @@ RUN <<EOF
 	done
 EOF
 
+COPY --chmod=0755 $TARGETPLATFORM/asbx-open /usr/local/bin/asbx-open
+RUN ln -s asbx-open /usr/local/bin/xdg-open
+ENV BROWSER=xdg-open
+
 USER ubuntu
 WORKDIR /home/ubuntu
 

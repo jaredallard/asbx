@@ -95,6 +95,7 @@ agent: codex
 forgejo_enabled: true
 github_enabled: true
 clipboard: copy_paste
+open_urls_enabled: true
 network_host: true
 podman_enabled: true
 op_allowed_secret_refs:
@@ -117,6 +118,7 @@ codex:
 				ForgejoEnabled:      true,
 				GitHubEnabled:       true,
 				Clipboard:           ClipboardCopyPaste,
+				OpenURLsEnabled:     true,
 				NetworkHost:         true,
 				PodmanEnabled:       true,
 				OPAllowedSecretRefs: []string{"op://x/y/*", "op://x/z/w"},
@@ -142,8 +144,10 @@ codex:
 		},
 		{
 			name:  "DefaultsTurnedOff",
-			files: []string{"forgejo_enabled: false\ngithub_enabled: false\n"},
-			want:  defaults(func(c *Config) { c.ForgejoEnabled, c.GitHubEnabled = false, false }),
+			files: []string{"forgejo_enabled: false\ngithub_enabled: false\nopen_urls_enabled: false\n"},
+			want: defaults(func(c *Config) {
+				c.ForgejoEnabled, c.GitHubEnabled, c.OpenURLsEnabled = false, false, false
+			}),
 		},
 		{
 			name: "LaterNestedOptionOverrides",
@@ -309,4 +313,16 @@ func TestLoadClipboard(t *testing.T) {
 
 	_, err = Load(configFiles("clipboard: paste\n")...)
 	assert.ErrorContains(t, err, `invalid clipboard "paste"`)
+}
+
+// TestLoadOpenURLs verifies that opening URLs is on by default, since
+// agents log in with it, and that a file can turn it off.
+func TestLoadOpenURLs(t *testing.T) {
+	cfg, err := Load()
+	assert.NilError(t, err)
+	assert.Equal(t, cfg.OpenURLsEnabled, true)
+
+	cfg, err = Load(configFiles("open_urls_enabled: false\n")...)
+	assert.NilError(t, err)
+	assert.Equal(t, cfg.OpenURLsEnabled, false)
 }

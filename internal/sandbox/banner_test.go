@@ -152,6 +152,22 @@ func TestNewBannerClipboard(t *testing.T) {
 	assert.DeepEqual(t, got.extras, []string{"clipboard (copy_paste)"})
 }
 
+// TestNewBannerOpenURLs verifies that the banner shows that URLs are
+// opened on the host when the bridge is set up for it, and not
+// otherwise.
+func TestNewBannerOpenURLs(t *testing.T) {
+	host := newTestHost(t)
+	host.Config.OpenURLsEnabled = true
+
+	run := &docker.Run{}
+	got := newBanner(host, &fakeAgent{}, run, &opbridge.Allowlist{}, nil)
+	assert.DeepEqual(t, got.extras, []string(nil))
+
+	run.Env("ASBX_OPEN_SOCKET=/run/asbx/open.sock")
+	got = newBanner(host, &fakeAgent{}, run, &opbridge.Allowlist{}, nil)
+	assert.DeepEqual(t, got.extras, []string{"open urls"})
+}
+
 // TestNetworkMode verifies that the network mode is the one configured,
 // noted as being in a VM where Docker runs in one.
 func TestNetworkMode(t *testing.T) {

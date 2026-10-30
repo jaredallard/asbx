@@ -29,6 +29,7 @@ import (
 	"git.rgst.io/jaredallard/asbx/internal/docker"
 	"git.rgst.io/jaredallard/asbx/internal/opbridge"
 	"git.rgst.io/jaredallard/asbx/internal/term"
+	"git.rgst.io/jaredallard/asbx/internal/urlbridge"
 )
 
 // The styles the banner is drawn with. They're the terminal's own
@@ -164,6 +165,10 @@ func newBanner(host *Host, agent Agent, run *docker.Run, allow *opbridge.Allowli
 	// Only when the bridge was set up, which it isn't without a tool.
 	if slices.Contains(run.Args(), clipbridge.SocketEnv+"="+clipbridge.Socket) {
 		extras = append(extras, "clipboard ("+cfg.Clipboard+")")
+	}
+
+	if slices.Contains(run.Args(), urlbridge.SocketEnv+"="+urlbridge.Socket) {
+		extras = append(extras, "open urls")
 	}
 
 	mounts := 0

@@ -62,6 +62,10 @@ type Config struct {
 	// [ClipboardCopy] or [ClipboardCopyPaste].
 	Clipboard string `yaml:"clipboard"`
 
+	// OpenURLsEnabled lets xdg-open inside the container open http and
+	// https URLs in the host's browser.
+	OpenURLsEnabled bool `yaml:"open_urls_enabled"`
+
 	// NetworkHost runs the container on the host's network.
 	NetworkHost bool `yaml:"network_host"`
 
@@ -146,13 +150,16 @@ type Codex struct {
 // Default returns the configuration before any file is read.
 func Default() Config {
 	// Passing through the host's logins is skipped when it isn't logged
-	// in, so it's safe to have on unless a file turns it off. Claude Code
-	// was the only agent before there was a choice.
+	// in, so it's safe to have on unless a file turns it off. Opening
+	// URLs is how agents log in and show links, and is skipped when the
+	// host can't. Claude Code was the only agent before there was a
+	// choice.
 	return Config{
-		Agent:          "claude",
-		ForgejoEnabled: true,
-		GitHubEnabled:  true,
-		Clipboard:      ClipboardCopy,
+		Agent:           "claude",
+		ForgejoEnabled:  true,
+		GitHubEnabled:   true,
+		Clipboard:       ClipboardCopy,
+		OpenURLsEnabled: true,
 		//nolint:gosec // Why: these are where the secrets are, not secrets.
 		Claude: Claude{
 			OAuthTokenSecretRef: "op://Private/claude-token/credential",

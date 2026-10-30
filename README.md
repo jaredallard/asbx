@@ -31,6 +31,8 @@ from your local machine with sane defaults and low setup cost.
   your host's `op`, limited to the secrets you allow if enabled.
 - Clipboard tools (`wl-copy`, `xclip`, `pbcopy`, ...) in the container
   copy to your host's clipboard, and can paste from it if enabled.
+- `xdg-open` in the container opens http(s) URLs, such as logins, in
+  your host's browser.
 - Containers can be run in the container with rootless Podman, if
   enabled, without giving it access to your host's Docker or privileged
   access.
@@ -144,6 +146,7 @@ options are nested under `claude:` and `codex:` maps, as in the example.
 | `op_allowed_secret_refs`          | list   | `op://` refs that `op` in the container may read through your host's `op`. See [1Password CLI](#1password-cli).                                                        |
 | `extra_secret_env_vars`           | map    | `NAME: op://ref` entries; each 1Password secret is passed into the container as the environment variable `NAME`.                                                       |
 | `clipboard`                       | string | How the container reaches your host's clipboard: `off`, `copy` or `copy_paste`. See [Clipboard](#clipboard). Defaults to `copy`.                                       |
+| `open_urls_enabled`               | bool   | Lets `xdg-open` in the container open http(s) URLs in your host's browser. See [Opening URLs](#opening-urls). On by default.                                           |
 | `network_host`                    | bool   | Runs the container on the host's network, so it can reach every service listening on localhost. Otherwise host services are only reachable via `host.docker.internal`. |
 | `podman_enabled`                  | bool   | Lets the agent run containers with rootless Podman inside the container. See [Podman](#podman).                                                                        |
 | `extra_mounts`                    | list   | Absolute paths to mount read-only at the same path inside the container.                                                                                               |
@@ -205,6 +208,15 @@ honor. Queries for your clipboard are dropped.
 If your host has none of the tools, asbx warns and doesn't forward the
 clipboard, and OSC 52 copies, such as Claude Code's own, are left to
 your terminal.
+
+### Opening URLs
+
+Only `http` and `https` URLs are opened, so the agent can't open files
+or other apps on your host.
+
+There is a small risk with enabling this since they're arbitrary URLs.
+
+It's on by default; set `open_urls_enabled: false` to turn it off.
 
 ### Podman
 
@@ -317,6 +329,9 @@ What it doesn't protect against:
   clipboard, which you may later paste into a terminal, so check what
   you paste. `copy_paste` lets it read everything you copy, passwords
   included, while it runs.
+- **`open_urls_enabled`**: the agent can open any http(s) URL in your
+  browser, where you're logged in, such as one that starts a download or
+  makes a request with side effects. Turn it off if that's a concern.
 - **`podman_enabled`**: the container runs with a seccomp profile that
   allows creating user namespaces and mounting in them, which lets the
   agent reach kernel code, as root in a user namespace, that's been

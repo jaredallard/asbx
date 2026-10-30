@@ -45,6 +45,7 @@ import (
 	"git.rgst.io/jaredallard/asbx/internal/opbridge"
 	"git.rgst.io/jaredallard/asbx/internal/stdiobridge"
 	"git.rgst.io/jaredallard/asbx/internal/term"
+	"git.rgst.io/jaredallard/asbx/internal/urlbridge"
 	"go.rgst.io/jaredallard/cmdexec/v2"
 )
 
@@ -268,6 +269,39 @@ func clipboardBridge(host *Host, run *docker.Run, mode string) {
 	run.Env(clipbridge.SocketEnv + "=" + clipbridge.Socket)
 }
 
+// hostOpener returns what opens URLs on the host, for xdg-open in the
+// container to use through the bridge, or nil when enabled is false or
+// the host has nothing to open them with.
+func hostOpener(enabled bool) urlbridge.Opener {
+	if !enabled {
+		return nil
+	}
+
+	opener, err := urlbridge.Detect(runtime.GOOS)
+	if err != nil {
+		return nil
+	}
+
+	return opener
+}
+
+// urlBridge lets xdg-open in the container open URLs in the host's
+// browser, when enabled. The bridge itself is started by Run, alongside
+// the container. The host lacking xdg-open is a warning rather than an
+// error, since enabled is on by default.
+func urlBridge(host *Host, run *docker.Run, enabled bool) {
+	if !enabled {
+		return
+	}
+
+	if hostOpener(enabled) == nil {
+		host.Warn("open_urls_enabled is set but xdg-open wasn't found on this host, install %s", "xdg-utils")
+		return
+	}
+
+	run.Env(urlbridge.SocketEnv + "=" + urlbridge.Socket)
+}
+
 // writePodmanSeccompProfile writes podmanSeccompProfile into the user's
 // cache directory, for docker to read, and returns its path. The file
 // is named after the profile's checksum, so versions of asbx don't
@@ -374,6 +408,7 @@ func configure(ctx context.Context, host *Host, run *docker.Run, agents []Agent)
 	}
 
 	clipboardBridge(host, run, cfg.Clipboard)
+	urlBridge(host, run, cfg.OpenURLsEnabled)
 
 	if cfg.ForgejoEnabled {
 		if err := forgejo(ctx, run); err != nil {
@@ -514,11 +549,12 @@ func Run(ctx context.Context, host *Host, agent Agent, known []Agent, args []str
 	}
 
 	cb := hostClipboard(host.Config.Clipboard)
+	opener := hostOpener(host.Config.OpenURLsEnabled)
 
 	// Only for the container and this host to know, so it's made after
 	// the banner, which lists the secrets, and never written anywhere.
 	var tlsConfig *tls.Config
-	if !allow.Empty() || cb != nil {
+	if !allow.Empty() || cb != nil || opener != nil {
 		session, err := stdiobridge.NewSession()
 		if err != nil {
 			return err
@@ -545,6 +581,12 @@ func Run(ctx context.Context, host *Host, agent Agent, known []Agent, args []str
 	if cb != nil {
 		wg.Go(func() {
 			clipbridge.Run(bridgeCtx, run.Name(), host.Config.Clipboard, tlsConfig, cb)
+		})
+	}
+
+	if opener != nil {
+		wg.Go(func() {
+			urlbridge.Run(bridgeCtx, run.Name(), tlsConfig, opener)
 		})
 	}
 

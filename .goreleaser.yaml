@@ -61,6 +61,22 @@ builds:
     goos:
       - linux
     mod_timestamp: "{{ .CommitTimestamp }}"
+  - main: ./cmd/asbx-open
+    id: asbx-open
+    binary: asbx-open
+    flags:
+      - -trimpath
+    ldflags:
+      - -s
+      - -w
+    env:
+      - CGO_ENABLED=0
+    goarch:
+      - amd64
+      - arm64
+    goos:
+      - linux
+    mod_timestamp: "{{ .CommitTimestamp }}"
 dockers_v2:
   - images:
       - ghcr.io/jaredallard/{{ .ProjectName }}
