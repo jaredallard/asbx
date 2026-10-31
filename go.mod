@@ -15,7 +15,7 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/google/go-containerregistry v0.22.1
 	github.com/hashicorp/yamux v0.1.2
-	github.com/sigstore/sigstore v1.11.1
+	github.com/sigstore/sigstore v1.11.2
 	github.com/sigstore/sigstore-go v1.4.0
 	github.com/urfave/cli/v3 v3.14.0
 	go.rgst.io/jaredallard/cmdexec/v2 v2.1.0
