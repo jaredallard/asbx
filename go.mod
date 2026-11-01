@@ -19,7 +19,7 @@ require (
 	github.com/sigstore/sigstore-go v1.4.0
 	github.com/urfave/cli/v3 v3.14.0
 	go.rgst.io/jaredallard/cmdexec/v2 v2.1.0
-	go.yaml.in/yaml/v3 v3.0.5
+	go.yaml.in/yaml/v3 v3.0.6
 	google.golang.org/protobuf v1.36.12
 	gotest.tools/v3 v3.5.2
 )
