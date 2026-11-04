@@ -5,7 +5,7 @@ golangci-lint = "2.15.0"
 goreleaser = "2.19.0"
 gotestsum = "1.13.0"
 shfmt = "latest"
-svu = "3.4.1"
+svu = "3.4.4"
 git-cliff = "2.14.2"
 ## <<Stencil::Block(extraTools)>>
 # Records the README's demo, see the demo task.
