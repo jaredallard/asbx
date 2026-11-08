@@ -2,7 +2,7 @@
 dprint = "0.64.3"
 golang = "1.27.3"
 golangci-lint = "2.15.0"
-goreleaser = "2.19.0"
+goreleaser = "2.20.0"
 gotestsum = "1.13.0"
 shfmt = "latest"
 svu = "3.4.4"
