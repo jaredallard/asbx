@@ -28,7 +28,7 @@ import (
 	"io/fs"
 	"os"
 
-	"go.yaml.in/yaml/v3"
+	"go.yaml.in/yaml/v4"
 )
 
 // Example is the example configuration, which documents every option.

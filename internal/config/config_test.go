@@ -23,7 +23,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"go.yaml.in/yaml/v3"
+	"go.yaml.in/yaml/v4"
 	"gotest.tools/v3/assert"
 )
 
