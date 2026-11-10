@@ -4,7 +4,7 @@ fd = "10.5.2"
 rg = "15.2.0"
 claude = "2.1.321"
 codex = "0.164.0"
-yq = "4.54.2"
+yq = "4.54.3"
 gh = "2.103.3"
 "forgejo:idlerealm-public/tools" = { version = "1.2.0", api_url = "https://git.rgst.io/api/v1" }
 
