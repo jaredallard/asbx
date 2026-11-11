@@ -4,7 +4,7 @@ go 1.27.0
 
 require (
 	charm.land/huh/v2 v2.0.3
-	charm.land/lipgloss/v2 v2.0.6
+	charm.land/lipgloss/v2 v2.1.0
 	github.com/alecthomas/chroma/v2 v2.27.0
 	github.com/aymanbagabas/go-udiff v0.4.1
 	github.com/bmatcuk/doublestar/v4 v4.10.4
