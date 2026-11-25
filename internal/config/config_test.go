@@ -266,17 +266,17 @@ func TestLoadErrors(t *testing.T) {
 		{
 			name:    "OldFormat",
 			content: "NETWORK_HOST=true\n",
-			want:    "cannot unmarshal !!str `NETWORK...` into config.Config",
+			want:    "cannot construct !!str `NETWORK...` into config.Config",
 		},
 		{
 			name:    "Malformed",
 			content: "extra_mounts: [/a\n",
-			want:    "line 1",
+			want:    "line 2: did not find expected ',' or ']'",
 		},
 		{
 			name:    "ListForScalar",
 			content: "claude:\n  oauth_token_secret_ref: [op://a/b/c]\n",
-			want:    "line 2: cannot unmarshal !!seq into string",
+			want:    "line 2: cannot construct !!seq into string",
 		},
 	}
 
@@ -294,8 +294,8 @@ func TestLoadErrors(t *testing.T) {
 func TestLoadInvalidValue(t *testing.T) {
 	_, err := Load(configFiles("network_host: maybe\n")...)
 
-	var typeErr *yaml.TypeError
-	assert.Assert(t, errors.As(err, &typeErr), "Load() = %v, want *yaml.TypeError", err)
+	var loadErr *yaml.LoadErrors
+	assert.Assert(t, errors.As(err, &loadErr), "Load() = %v, want *yaml.LoadErrors", err)
 }
 
 // TestLoadClipboard verifies that the clipboard option defaults to
